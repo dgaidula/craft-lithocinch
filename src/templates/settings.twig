@@ -1,0 +1,75 @@
+{# Crisp settings (Control Panel). Most options are better set per-environment in
+   config/crisp.php; this covers the essentials. #}
+{% import "_includes/forms" as forms %}
+
+{{ forms.selectField({
+    label: 'Backend driver',
+    instructions: 'How Craft reaches the process-images engine.',
+    id: 'driver',
+    name: 'driver',
+    value: settings.driver,
+    options: [
+        { label: 'CLI (Node on this server)', value: 'cli' },
+        { label: 'Daemon (local serve)', value: 'daemon' },
+        { label: 'Remote API (hosted Lambda)', value: 'remote' },
+    ],
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Tool path (cli)',
+    instructions: 'Command or path to the `process-images` binary (or cli.js).',
+    id: 'toolPath',
+    name: 'toolPath',
+    value: settings.toolPath,
+    suggestEnvVars: true,
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Daemon URL',
+    id: 'daemonUrl',
+    name: 'daemonUrl',
+    value: settings.daemonUrl,
+    suggestEnvVars: true,
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Remote API URL',
+    id: 'apiUrl',
+    name: 'apiUrl',
+    value: settings.apiUrl,
+    suggestEnvVars: true,
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'API key / token',
+    instructions: 'Bearer token for the daemon/remote driver. Use an env var.',
+    id: 'apiKey',
+    name: 'apiKey',
+    value: settings.apiKey,
+    suggestEnvVars: true,
+}) }}
+
+{{ forms.textField({
+    label: 'Transform filesystem handle',
+    instructions: 'Craft filesystem to store generated variants (e.g. your GCS bucket).',
+    id: 'transformFsHandle',
+    name: 'transformFsHandle',
+    value: settings.transformFsHandle,
+}) }}
+
+{{ forms.textField({
+    label: 'Perceptual target (SSIM)',
+    instructions: 'Quality bar for lossy formats. 0.99 is perceptually lossless.',
+    id: 'perceptualTarget',
+    name: 'perceptualTarget',
+    value: settings.perceptualTarget,
+    size: 6,
+}) }}
+
+{{ forms.textField({
+    label: 'Max source size (px)',
+    id: 'maxSize',
+    name: 'maxSize',
+    value: settings.maxSize,
+    size: 6,
+}) }}
