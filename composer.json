@@ -3,7 +3,7 @@
     "description": "Perceptually-lossless, content-aware image optimization and best-format delivery for Craft CMS, powered by the Lithocinch (sharp) engine.",
     "version": "0.1.0",
     "type": "craft-plugin",
-    "license": "proprietary",
+    "license": "Apache-2.0",
     "support": {
         "docs": "https://github.com/dgaidula/craft-lithocinch"
     },
