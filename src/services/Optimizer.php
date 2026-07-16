@@ -1,15 +1,15 @@
 <?php
 
-namespace iceboxind\crisp\services;
+namespace iceboxind\lithocinch\services;
 
 use Craft;
 use craft\base\Component;
 use craft\elements\Asset;
-use iceboxind\crisp\drivers\CliDriver;
-use iceboxind\crisp\drivers\DriverInterface;
-use iceboxind\crisp\drivers\HttpDriver;
-use iceboxind\crisp\models\Settings;
-use iceboxind\crisp\Plugin;
+use iceboxind\lithocinch\drivers\CliDriver;
+use iceboxind\lithocinch\drivers\DriverInterface;
+use iceboxind\lithocinch\drivers\HttpDriver;
+use iceboxind\lithocinch\models\Settings;
+use iceboxind\lithocinch\Plugin;
 use Twig\Markup;
 
 /**
@@ -20,8 +20,8 @@ use Twig\Markup;
  * Craft's data cache (durable enough for a skeleton; a DB index is the
  * production upgrade) and stored as files in the configured transform Fs.
  *
- * NOTE: a few Craft API calls below are marked VERIFY — confirm exact signatures
- * against your Craft 4.5.x / 5.x before shipping.
+ * The Craft API calls below were verified against Craft 5.10.8.1 vendored source
+ * (Asset::getContents/getFocalPoint/getHasFocalPoint, Fs service + BaseFsInterface).
  */
 class Optimizer extends Component
 {
@@ -68,7 +68,7 @@ class Optimizer extends Component
 
         // Generate all misses in ONE batch call (one source read, one backend hit).
         if ($misses) {
-            $source = $asset->getContents(); // VERIFY: reads bytes from the asset's Fs (GCS-safe)
+            $source = $asset->getContents(); // reads bytes via the asset's Fs (GCS-safe) — verified Craft 5.10
             $batch = array_values(array_map(fn($d) => ['ops' => $d['ops'], 'format' => $d['format']], $misses));
             $outputs = $this->driver()->transform($source, ['batch' => $batch, 'defaults' => $this->defaults()]);
             $j = 0;
@@ -132,18 +132,19 @@ class Optimizer extends Component
         }
         if (isset($opts['focal'])) {
             $ops['focal'] = $opts['focal'];
-        } elseif (($ops['fit'] ?? 'cover') === 'cover' && method_exists($asset, 'getFocalPoint')) {
-            $fp = $asset->getFocalPoint(); // VERIFY: ['x'=>0..1,'y'=>0..1]
-            if ($fp) {
-                $ops['focal'] = ['x' => $fp['x'], 'y' => $fp['y']];
-            }
+        } elseif (($ops['fit'] ?? 'cover') === 'cover' && $asset->getHasFocalPoint()) {
+            // getFocalPoint() returns ['x'=>0.5,'y'=>0.5] defaults for any image, so
+            // gate on getHasFocalPoint() to only override the crop gravity when the
+            // user actually set one (verified against Craft 5.10: Asset.php).
+            $fp = $asset->getFocalPoint();
+            $ops['focal'] = ['x' => $fp['x'], 'y' => $fp['y']];
         }
         return $ops;
     }
 
     private function cacheKey(Asset $asset, array $ops, string $format): string
     {
-        return 'crisp:' . md5(implode('|', [
+        return 'litho:' . md5(implode('|', [
             $asset->uid,
             $asset->dateModified?->getTimestamp() ?? 0,
             json_encode($ops),
@@ -171,7 +172,7 @@ class Optimizer extends Component
 
         $fs = $this->fs();
         if ($fs && !$fs->fileExists($path)) {
-            $fs->write($path, $output['data']); // VERIFY: FsInterface::write($path, $contents)
+            $fs->write($path, $output['data']); // BaseFsInterface::write(string,string,array $config=[]) — verified Craft 5.10
         }
 
         $meta = [
@@ -189,7 +190,7 @@ class Optimizer extends Component
     private function fs(): ?object
     {
         $handle = Plugin::$plugin->getSettings()->transformFsHandle;
-        // VERIFY: Craft 4/5 service + method name for fetching a filesystem by handle.
+        // Craft::$app->getFs()->getFilesystemByHandle(): ?FsInterface — verified Craft 5.10 (nullable).
         return $handle ? Craft::$app->getFs()->getFilesystemByHandle($handle) : null;
     }
 

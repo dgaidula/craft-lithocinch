@@ -1,6 +1,6 @@
 <?php
 
-namespace iceboxind\crisp\drivers;
+namespace iceboxind\lithocinch\drivers;
 
 /**
  * A backend that turns source image bytes + a transform request into one or more

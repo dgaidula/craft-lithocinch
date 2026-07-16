@@ -1,18 +1,22 @@
 <?php
 
-namespace iceboxind\crisp;
+namespace iceboxind\lithocinch;
 
 use Craft;
 use craft\base\Model;
 use craft\base\Plugin as BasePlugin;
+use craft\events\RegisterComponentTypesEvent;
+use craft\models\ImageTransform;
+use craft\services\ImageTransforms;
 use craft\web\twig\variables\CraftVariable;
-use iceboxind\crisp\models\Settings;
-use iceboxind\crisp\services\Optimizer;
-use iceboxind\crisp\variables\CrispVariable;
+use iceboxind\lithocinch\imagetransforms\LithoTransformer;
+use iceboxind\lithocinch\models\Settings;
+use iceboxind\lithocinch\services\Optimizer;
+use iceboxind\lithocinch\variables\LithoVariable;
 use yii\base\Event;
 
 /**
- * Crisp — perceptually-lossless, content-aware image optimization for Craft.
+ * Lithocinch — perceptually-lossless, content-aware image optimization for Craft.
  *
  * This skeleton uses the Twig-API + `cli` driver path (version-robust across
  * Craft 4.5+/5). Registering a native ImageTransformer (so existing
@@ -41,16 +45,43 @@ class Plugin extends BasePlugin
         parent::init();
         self::$plugin = $this;
 
-        // craft.crisp.* Twig API
+        // craft.litho.* Twig API
         Event::on(CraftVariable::class, CraftVariable::EVENT_INIT, function (Event $event) {
             /** @var CraftVariable $variable */
             $variable = $event->sender;
-            $variable->set('crisp', CrispVariable::class);
+            $variable->set('litho', LithoVariable::class);
         });
+
+        $this->registerImageTransformer();
 
         // TODO (layer A): on-upload source optimization — hook
         // craft\services\Assets::EVENT_BEFORE_REPLACE_ASSET / Elements save to cap
         // + perceptually compress the stored original (keep its format). Toggleable.
+    }
+
+    /**
+     * Register LithoTransformer so Craft knows about it (invalidation / eager-load
+     * bookkeeping), and — when opted in — make it the DEFAULT transformer so that
+     * existing `asset.getUrl({width})` calls route through Lithocinch with no template
+     * changes. The default is set via a DI container definition, which covers both
+     * ad-hoc transform arrays and CP-saved named transforms (the transformer class
+     * is not persisted per-transform, so the container default always applies).
+     */
+    private function registerImageTransformer(): void
+    {
+        Event::on(
+            ImageTransforms::class,
+            ImageTransforms::EVENT_REGISTER_IMAGE_TRANSFORMERS,
+            static function (RegisterComponentTypesEvent $event) {
+                $event->types[] = LithoTransformer::class;
+            }
+        );
+
+        if ($this->getSettings()->useAsDefaultTransformer) {
+            Craft::$container->set(ImageTransform::class, [
+                'transformer' => LithoTransformer::class,
+            ]);
+        }
     }
 
     protected function createSettingsModel(): ?Model
@@ -60,7 +91,7 @@ class Plugin extends BasePlugin
 
     protected function settingsHtml(): ?string
     {
-        return Craft::$app->getView()->renderTemplate('crisp/settings', [
+        return Craft::$app->getView()->renderTemplate('litho/settings', [
             'settings' => $this->getSettings(),
         ]);
     }

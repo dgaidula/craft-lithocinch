@@ -1,8 +1,8 @@
-# Crisp (working name) — Craft CMS image optimization
+# Lithocinch (working name) — Craft CMS image optimization
 
 Perceptually-lossless, content-aware image optimization and **best-format
 delivery** for Craft CMS 4.5+ / 5, powered by the
-[`process-images`](../process-images) (sharp) engine.
+[`lithocinch`](../lithocinch) (sharp) engine.
 
 Unlike resize-only plugins, Crisp resizes **and** automatically returns the
 smallest *perceptually-lossless* format per image (AVIF / WebP / JPEG / PNG),
@@ -12,14 +12,14 @@ with focal-point-aware crops and `<picture>`/`srcset` generation.
 > wire into a real Craft site and iterate. Calls marked `// VERIFY` in the code
 > need confirming against your exact Craft 4.5.x / 5.x. The native
 > `ImageTransformer` integration (so existing `asset.getUrl({width})` calls
-> auto-optimize) is the next milestone — see [`../process-images/SPEC.md`](../process-images/SPEC.md).
+> auto-optimize) is the next milestone — see [`../lithocinch/SPEC.md`](../lithocinch/SPEC.md).
 
 ## How it works
 
 ```
 Twig  ──▶  Crisp (PHP)  ──reads source via Craft Fs (GCS/S3/local)──▶  driver
                                                                          │
-                          process-images engine (Node/sharp)  ◀─────────┘
+                          lithocinch engine (Node/sharp)  ◀─────────┘
                           resize + perceptual + auto-format
                                  │  optimized bytes back
                           written to the transform Fs (GCS) + cached by key
@@ -31,9 +31,9 @@ Bytes in, bytes out — the engine never touches storage, so this works with the
 ## Requirements
 
 - Craft CMS 4.5+ or 5.x
-- The `process-images` engine reachable via one of:
-  - **cli**: Node 20+ and the tool on the server (`npm i -g process-images`)
-  - **daemon**: `process-images serve` running locally
+- The `lithocinch` engine reachable via one of:
+  - **cli**: Node 20+ and the tool on the server (`npm i -g lithocinch`)
+  - **daemon**: `lithocinch serve` running locally
   - **remote**: a hosted Lambda (no Node needed on the web host)
 
 ## Install (local dev, path repo)
@@ -41,25 +41,25 @@ Bytes in, bytes out — the engine never touches storage, so this works with the
 In your Craft project's `composer.json`:
 
 ```jsonc
-"repositories": [{ "type": "path", "url": "../../sw/github/craft-crisp" }]
+"repositories": [{ "type": "path", "url": "../../sw/github/craft-lithocinch" }]
 ```
 
 ```bash
-composer require iceboxind/craft-crisp:@dev
+composer require iceboxind/craft-lithocinch:@dev
 php craft plugin/install crisp
 ```
 
-Then copy `config.example.php` → `config/crisp.php` and set the driver +
+Then copy `config.example.php` → `config/litho.php` and set the driver +
 `transformFsHandle` (your GCS bucket).
 
 ## Template usage
 
 ```twig
 {# single best <img> src, format auto-picked #}
-<img src="{{ craft.crisp.url(hero, { width: 1200, format: 'auto' }) }}" alt="">
+<img src="{{ craft.litho.url(hero, { width: 1200, format: 'auto' }) }}" alt="">
 
 {# full <picture>: avif + webp sources + fallback, responsive, focal-aware #}
-{{ craft.crisp.picture(hero, {
+{{ craft.litho.picture(hero, {
      widths: [600, 1000, 1600],
      formats: ['avif', 'webp', 'auto'],
      sizes: '(max-width: 1000px) 100vw, 1000px',

@@ -1,8 +1,8 @@
 <?php
 
-namespace iceboxind\crisp\drivers;
+namespace iceboxind\lithocinch\drivers;
 
-use iceboxind\crisp\models\Settings;
+use iceboxind\lithocinch\models\Settings;
 use RuntimeException;
 use Symfony\Component\Process\Process;
 
@@ -33,7 +33,7 @@ class CliDriver implements DriverInterface
         $process->run();
 
         if (!$process->isSuccessful()) {
-            throw new RuntimeException('Crisp cli transform failed: ' . trim($process->getErrorOutput() ?: $process->getOutput()));
+            throw new RuntimeException('Lithocinch cli transform failed: ' . trim($process->getErrorOutput() ?: $process->getOutput()));
         }
 
         return Outputs::decode($process->getOutput());

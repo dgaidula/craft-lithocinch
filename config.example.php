@@ -1,6 +1,6 @@
 <?php
 /**
- * Crisp config — copy to craft/config/crisp.php. Multi-environment supported.
+ * Crisp config — copy to craft/config/litho.php. Multi-environment supported.
  * Values here override the Control Panel settings.
  */
 

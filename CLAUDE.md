@@ -1,12 +1,15 @@
-# craft-crisp — agent guide
+# craft-lithocinch — agent guide
 
-Craft CMS plugin (working name **"Crisp"**, renameable) for perceptually-lossless,
+Craft CMS plugin (working name **"Lithocinch"**, renameable) for perceptually-lossless,
 content-aware image optimization + **best-format delivery**. Targets Craft
 **4.5+ and 5.x**. It's the commercial product on top of the open-source engine at
-`../process-images`.
+`../lithocinch`.
 
-> **Status: scaffold.** Twig-API + `cli` driver path only. `php -l` clean; not yet
-> run inside a real Craft site. Several Craft API calls are flagged `// VERIFY`.
+> **Status: pre-alpha.** Twig-API + `cli` driver + a native `ImageTransformer`.
+> All Craft API calls **verified against Craft 5.10.8.1** vendored source (the
+> `// VERIFY` markers are resolved). `php -l` clean. **Not yet run end-to-end in a
+> real Craft site** — the install + live-render test recipe is in
+> `docs/DDEV-TESTING.md`.
 
 ## Architecture
 PHP plugin → reads source bytes via Craft's `Fs` (GCS/S3/local) → a **driver**
@@ -14,30 +17,41 @@ PHP plugin → reads source bytes via Craft's `Fs` (GCS/S3/local) → a **driver
 back → written to the transform `Fs`, cached by key. Bytes-in/bytes-out, so the
 engine needs **zero storage integration** (works with `craftcms/google-cloud`).
 
-The full design + decisions + roadmap is in **`../process-images/SPEC.md`** —
+The full design + decisions + roadmap is in **`../lithocinch/SPEC.md`** —
 read it first.
 
 ## Map
-- `src/Plugin.php` — registers `craft.crisp.*` + settings.
+- `src/Plugin.php` — registers `craft.litho.*` + settings.
 - `src/models/Settings.php` — driver, endpoints, transform Fs handle, perceptual target, responsive defaults.
 - `src/drivers/` — `DriverInterface`, `CliDriver` (Symfony Process), `HttpDriver` (Guzzle; daemon+remote), `Outputs` decoder.
 - `src/services/Optimizer.php` — asset+opts → cached variant URL(s); batches misses; builds `<picture>`/srcset; focal-point aware. **The heart.**
-- `src/variables/CrispVariable.php` — `craft.crisp.url()` / `.picture()`.
+- `src/imagetransforms/LithoTransformer.php` — native Craft `ImageTransformer`; routes `asset.getUrl({width})` through Lithocinch. Opt-in via `useAsDefaultTransformer`.
+- `src/variables/LithoVariable.php` — `craft.litho.url()` / `.picture()`.
 - `src/templates/settings.twig`, `config.example.php`.
 
 ## Conventions
-- PSR-4 `iceboxind\crisp\` → `src/`. `php -l` before commit (no PHP runtime here
+- PSR-4 `iceboxind\lithocinch\` → `src/`. `php -l` before commit (no PHP runtime here
   to test against Craft; verify in a DDEV site).
 - Commit attribution per global `~/.claude/CLAUDE.md`.
 
-## Known `// VERIFY` items (confirm in Craft 5.10 / DDEV)
-- `Asset::getContents()` (read bytes), `getFocalPoint()` (→ {x,y}).
-- `Craft::$app->getFs()->getFilesystemByHandle($h)`; `$fs->write/fileExists/getRootUrl`.
-- CP form macro field names in `settings.twig`.
+## API verification (done — Craft 5.10.8.1 vendored source)
+Confirmed correct as written; interfaces are all `@since 4.0.0`, so the 4.5+ target holds:
+- `Asset::getContents(): string` — routes through the volume's Fs (GCS-safe).
+- `getFocalPoint(): array|string|null` — returns `['x'=>0.5,'y'=>0.5]` **defaults** for
+  images (null only for non-image kinds); gate on `getHasFocalPoint(): bool` to detect an
+  explicitly-set point (Optimizer now does this).
+- `Craft::$app->getFs()->getFilesystemByHandle($h): ?FsInterface` (nullable — null-check).
+- `BaseFsInterface::write(string $path, string $contents, array $config=[]): void`,
+  `fileExists(string): bool`, `getRootUrl(): ?string` (nullable when `hasUrls=false`).
+- ImageTransformer: implement `craft\base\imagetransforms\ImageTransformerInterface`
+  (`getTransformUrl`, `invalidateAssetTransforms`); make default via a DI container def
+  `Craft::$container->set(ImageTransform::class, ['transformer'=>LithoTransformer::class])`
+  (covers ad-hoc AND named CP transforms — transformer isn't persisted per-transform).
+- Still unverified in a running site: CP form macro field names in `settings.twig`.
 
 ## Next milestones (from SPEC §11)
-1. **Native `ImageTransformer`** (Craft 4.4+/5) so existing `asset.getUrl({width})`
-   auto-optimizes — the drop-in demo. Mind the 4-vs-5 interface delta.
+1. ~~**Native `ImageTransformer`**~~ **[done, untested in-site]** — `LithoTransformer`
+   + `useAsDefaultTransformer`. Needs the live DDEV render test (`docs/DDEV-TESTING.md`).
 2. **On-upload layer**: cap + perceptually compress the stored original (keep
    format) for GCS savings on CAF/TLB.
 3. Bulk utility + queue jobs + savings dashboard; editions/licensing.

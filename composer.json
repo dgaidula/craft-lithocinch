@@ -1,11 +1,11 @@
 {
-    "name": "iceboxind/craft-crisp",
-    "description": "Perceptually-lossless, content-aware image optimization and best-format delivery for Craft CMS, powered by the process-images (sharp) engine.",
+    "name": "iceboxind/craft-lithocinch",
+    "description": "Perceptually-lossless, content-aware image optimization and best-format delivery for Craft CMS, powered by the Lithocinch (sharp) engine.",
     "version": "0.1.0",
     "type": "craft-plugin",
     "license": "proprietary",
     "support": {
-        "docs": "https://github.com/iceboxind/craft-crisp"
+        "docs": "https://github.com/dgaidula/craft-lithocinch"
     },
     "require": {
         "php": ">=8.0.2",
@@ -15,13 +15,13 @@
     },
     "autoload": {
         "psr-4": {
-            "iceboxind\\crisp\\": "src/"
+            "iceboxind\\lithocinch\\": "src/"
         }
     },
     "extra": {
-        "handle": "crisp",
-        "name": "Crisp",
+        "handle": "litho",
+        "name": "Lithocinch",
         "developer": "Dan Gaidula / Icebox Industries",
-        "class": "iceboxind\\crisp\\Plugin"
+        "class": "iceboxind\\lithocinch\\Plugin"
     }
 }

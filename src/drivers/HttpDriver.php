@@ -1,6 +1,6 @@
 <?php
 
-namespace iceboxind\crisp\drivers;
+namespace iceboxind\lithocinch\drivers;
 
 use GuzzleHttp\Client;
 

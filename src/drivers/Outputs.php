@@ -1,6 +1,6 @@
 <?php
 
-namespace iceboxind\crisp\drivers;
+namespace iceboxind\lithocinch\drivers;
 
 use RuntimeException;
 
@@ -12,7 +12,7 @@ final class Outputs
         $res = json_decode($json, true);
         if (!is_array($res) || !isset($res['outputs'])) {
             $err = is_array($res) && isset($res['error']) ? $res['error'] : 'malformed response';
-            throw new RuntimeException("Crisp transform error: {$err}");
+            throw new RuntimeException("Lithocinch transform error: {$err}");
         }
         return array_map(static function (array $o): array {
             $o['data'] = base64_decode($o['data'] ?? '', true) ?: '';
