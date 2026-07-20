@@ -80,4 +80,5 @@ requests are a cache hit, and editing/replacing the asset invalidates them.
 
 ## License
 
-Proprietary (commercial plugin). The underlying engine is MIT.
+[Apache-2.0](./LICENSE) © 2026 Danniel T. Gaidula. Open source; the Pro edition and
+support are sold via the Craft Plugin Store.

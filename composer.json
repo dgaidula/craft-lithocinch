@@ -21,7 +21,7 @@
     "extra": {
         "handle": "litho",
         "name": "Lithocinch",
-        "developer": "Dan Gaidula / Icebox Industries",
+        "developer": "Danniel T. Gaidula / Icebox Industries",
         "class": "iceboxind\\lithocinch\\Plugin"
     }
 }
