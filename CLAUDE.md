@@ -8,9 +8,12 @@ content-aware image optimization + **best-format delivery**. Targets Craft
 > **Status: pre-release.** Twig-API (`url()` + `picture()`) + three drivers
 > (cli/daemon/remote) + a native `ImageTransformer` + the Lite/Pro edition split.
 > All Craft API calls **verified against Craft 5.10.8.1** vendored source (the
-> `// VERIFY` markers are resolved). `php -l` clean. **Not yet run end-to-end in a
-> real Craft site** — the install + live-render test recipe is in
-> `docs/DDEV-TESTING.md`.
+> `// VERIFY` markers are resolved). `php -l` clean. **Verified end-to-end 2026-07-20**
+> against `craft5-plugin-testbed` (Craft 5.10.11): native `ImageTransformer`, `url()`,
+> and `picture()` all produced real AVIF/WebP variants via the `daemon` driver, and the
+> Lite edition's driver-fallback gate fired correctly. Lite's `cli`-driver byte output
+> wasn't exercised (test container's Node/sharp arch mismatch — logic verified by code
+> review, not by execution). See `docs/DDEV-TESTING.md` for the recipe + gotchas.
 
 ## Architecture
 PHP plugin → reads source bytes via Craft's `Fs` (GCS/S3/local) → a **driver**
@@ -60,13 +63,15 @@ is centralized in `Optimizer` via `Plugin::$plugin->isPro()` (`is('pro','>=')`):
 - Lite degrades gracefully (never throws): `editionFormatPool()` drops AVIF,
   `editionFormat()` coerces explicit `avif` → `auto`, `litePicture()` returns a
   single optimized `<img>`, `driver()` falls back to `cli` (logged).
-- Dev: force Pro with `php craft plugin/switch-edition litho pro`. Editions are
-  declared in code + priced in Craft Console — nothing edition-related goes in
-  `composer.json`.
+- Dev: force an edition with `ddev craft project-config/set plugins.litho.edition pro`
+  (no built-in `plugin/switch-edition` console command exists in Craft 5.10 — that's
+  a CP-UI / `Plugins::switchEdition()` service action; project-config is the direct
+  route for local testing without a Console license). Editions are declared in code +
+  priced in Craft Console — nothing edition-related goes in `composer.json`.
 
 ## Next milestones (from SPEC §11)
-1. ~~**Native `ImageTransformer`**~~ **[done, untested in-site]** — `LithoTransformer`
-   + `useAsDefaultTransformer`. Needs the live DDEV render test (`docs/DDEV-TESTING.md`).
+1. ~~**Native `ImageTransformer`**~~ **[done, verified in-site 2026-07-20]** —
+   `LithoTransformer` + `useAsDefaultTransformer`. See `docs/DDEV-TESTING.md`.
 2. ~~**Lite/Pro edition split**~~ **[done]** — see above.
 3. **On-upload layer**: cap + perceptually compress the stored original (keep
    format) for GCS savings on CAF/TLB.
