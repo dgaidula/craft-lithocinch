@@ -34,8 +34,8 @@ class Plugin extends BasePlugin
     /**
      * Two editions, low-to-high. A fresh install defaults to the first (Lite),
      * so installing the plugin never silently unlocks paid behavior. Pro is
-     * activated by a Store license (or, in dev, `craft plugin/switch-edition
-     * litho pro`). The `is()` / `isPro()` gates below key off this list.
+     * activated by a Store license (or, in dev, `craft project-config/set
+     * plugins.litho.edition pro`). The `is()` / `isPro()` gates below key off this list.
      *
      * Split:
      *  - Lite (free): native ImageTransformer drop-in + craft.litho.url(),

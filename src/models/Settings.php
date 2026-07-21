@@ -14,8 +14,8 @@ class Settings extends Model
     public string $driver = 'cli';
 
     // --- cli driver ---
-    /** Command or path to the process-images bin (or the cli.js script). */
-    public string $toolPath = 'process-images';
+    /** Command or path to the lithocinch bin (or the cli.js script). */
+    public string $toolPath = 'lithocinch';
     /** Optional explicit node binary to prefix (when toolPath is a .js script). */
     public string $nodePath = '';
 

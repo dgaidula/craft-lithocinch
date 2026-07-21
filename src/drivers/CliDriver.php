@@ -7,7 +7,7 @@ use RuntimeException;
 use Symfony\Component\Process\Process;
 
 /**
- * Shells out to `process-images transform`, sending the request as JSON on stdin
+ * Shells out to `lithocinch transform`, sending the request as JSON on stdin
  * and reading the JSON response from stdout. Requires Node + the tool on the box.
  */
 class CliDriver implements DriverInterface
