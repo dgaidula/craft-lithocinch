@@ -30,17 +30,30 @@ class Optimizer extends Component
         'avif' => 'avif', 'gif' => 'gif', 'tiff' => 'tif',
     ];
 
+    /** Formats reserved for Pro. Lite delivers the best non-AVIF modern format. */
+    private const PRO_ONLY_FORMATS = ['avif'];
+
     /** Single best <img> src for an asset. */
     public function url(Asset $asset, array $opts = []): ?string
     {
-        $format = $opts['format'] ?? 'auto';
+        $format = $this->editionFormat($opts['format'] ?? 'auto');
         $variant = $this->variant($asset, $this->ops($asset, $opts), $format);
         return $variant['url'] ?? null;
     }
 
-    /** Build a full <picture> element (avif/webp/... sources + <img> fallback). */
+    /**
+     * Build a full <picture> element (avif/webp/... sources + <img> fallback).
+     *
+     * Responsive <picture>/srcset generation is a Pro feature. On Lite this
+     * degrades gracefully to a single optimized <img> (largest requested width,
+     * best non-AVIF format) so templates that call picture() still render.
+     */
     public function picture(Asset $asset, array $opts = []): Markup
     {
+        if (!Plugin::$plugin->isPro()) {
+            return $this->litePicture($asset, $opts);
+        }
+
         $settings = Plugin::$plugin->getSettings();
         $widths = $opts['widths'] ?? $settings->defaultWidths;
         $formats = $opts['formats'] ?? $settings->defaultFormats;
@@ -104,6 +117,18 @@ class Optimizer extends Component
     private function driver(): DriverInterface
     {
         $s = Plugin::$plugin->getSettings();
+
+        // The daemon/remote drivers are Pro. On Lite, fall back to cli rather
+        // than throwing, so a mis-configured driver still renders images.
+        if ($s->driver !== 'cli' && !Plugin::$plugin->isPro()) {
+            Craft::warning(
+                "Lithocinch Lite supports only the 'cli' driver; ignoring '{$s->driver}'. "
+                . 'Upgrade to Pro for the daemon and remote drivers.',
+                'lithocinch'
+            );
+            return new CliDriver($s);
+        }
+
         return match ($s->driver) {
             'daemon' => new HttpDriver($s->daemonUrl, $s->apiKey ?: null, $s->timeout),
             'remote' => new HttpDriver($s->apiUrl, $s->apiKey ?: null, $s->timeout),
@@ -116,9 +141,65 @@ class Optimizer extends Component
         $s = Plugin::$plugin->getSettings();
         return [
             'perceptualTarget' => $s->perceptualTarget,
-            'formatPool' => $s->formatPool,
+            'formatPool' => $this->editionFormatPool($s->formatPool),
             'maxSize' => $s->maxSize,
         ];
+    }
+
+    /**
+     * On Lite, strip Pro-only formats (AVIF) from the shootout pool so the
+     * engine picks the best *non-AVIF* format (WebP/JPEG/PNG). Falls back to a
+     * sane pool if that would leave nothing. Pro passes the pool through as-is.
+     */
+    private function editionFormatPool(array $pool): array
+    {
+        if (Plugin::$plugin->isPro()) {
+            return $pool;
+        }
+        $lite = array_values(array_filter($pool, fn($f) => !in_array($f, self::PRO_ONLY_FORMATS, true)));
+        return $lite ?: ['webp', 'jpeg', 'png'];
+    }
+
+    /**
+     * Coerce an explicitly-requested Pro-only format down to 'auto' on Lite, so
+     * `format: 'avif'` (or a CP transform set to AVIF) yields the best Lite
+     * format instead of silently bypassing the edition gate.
+     */
+    private function editionFormat(string $format): string
+    {
+        if (in_array($format, self::PRO_ONLY_FORMATS, true) && !Plugin::$plugin->isPro()) {
+            return 'auto';
+        }
+        return $format;
+    }
+
+    /**
+     * Lite degradation for picture(): a single optimized <img> at the largest
+     * requested width, best non-AVIF format — no multi-format/multi-width
+     * sources. Returns empty markup if no transform Fs is configured.
+     */
+    private function litePicture(Asset $asset, array $opts): Markup
+    {
+        $widths = $opts['widths'] ?? Plugin::$plugin->getSettings()->defaultWidths;
+        $width = $widths ? (int)max($widths) : null;
+
+        $urlOpts = $opts;
+        unset($urlOpts['widths'], $urlOpts['formats']);
+        if ($width) {
+            $urlOpts['width'] = $width;
+        }
+        $urlOpts['format'] = 'auto'; // editionFormat/pool keep this non-AVIF on Lite
+
+        $src = $this->url($asset, $urlOpts);
+        if (!$src) {
+            return new Markup('', 'UTF-8');
+        }
+
+        $alt = htmlspecialchars((string)($opts['alt'] ?? ''), ENT_QUOTES);
+        $img = "<img src=\"{$src}\""
+            . ($width ? " width=\"{$width}\"" : '')
+            . " alt=\"{$alt}\" loading=\"lazy\" decoding=\"async\">";
+        return new Markup("<picture>{$img}</picture>", 'UTF-8');
     }
 
     /** Map Twig opts -> transform `ops`, defaulting focal to the asset's focal point. */

@@ -4,22 +4,42 @@ Perceptually-lossless, content-aware image optimization and **best-format
 delivery** for Craft CMS 4.5+ / 5, powered by the
 [`lithocinch`](../lithocinch) (sharp) engine.
 
-Unlike resize-only plugins, Crisp resizes **and** automatically returns the
+Unlike resize-only plugins, Lithocinch resizes **and** automatically returns the
 smallest *perceptually-lossless* format per image (AVIF / WebP / JPEG / PNG),
 with focal-point-aware crops and `<picture>`/`srcset` generation.
 
-> **Status: scaffold.** This is a working skeleton (Twig API + `cli` driver) to
-> wire into a real Craft site and iterate. Calls marked `// VERIFY` in the code
-> need confirming against your exact Craft 4.5.x / 5.x. The native
-> `ImageTransformer` integration (so existing `asset.getUrl({width})` calls
-> auto-optimize) is the next milestone — see [`../lithocinch/SPEC.md`](../lithocinch/SPEC.md).
+## Editions
+
+Lithocinch ships in two editions. A fresh install runs **Lite**; **Pro** is
+unlocked with a Plugin Store license.
+
+| Capability | Lite (free) | Pro |
+|---|:---:|:---:|
+| Native `ImageTransformer` — existing `asset.getUrl({width})` calls auto-optimize, zero template changes | ✅ | ✅ |
+| `craft.litho.url()` — single best-format `<img>` src | ✅ | ✅ |
+| Best-format delivery (perceptual shootout) | WebP / JPEG / PNG | **+ AVIF** |
+| Focal-point-aware cover crops | ✅ | ✅ |
+| Key-based variant caching to your transform Fs (GCS/S3/local) | ✅ | ✅ |
+| `craft.litho.picture()` — responsive `<picture>`/srcset (multi-format × multi-width) | — | ✅ |
+| Backend drivers | `cli` | `cli` · `daemon` · `remote` |
+
+**Graceful degradation, not lockout.** On Lite: AVIF is dropped from the format
+pool (you still get the best of WebP/JPEG/PNG); `craft.litho.picture()` returns a
+single optimized `<img>` at the largest requested width; and a `daemon`/`remote`
+driver setting falls back to `cli` (logged), so nothing throws or renders broken.
+
+> **Status: pre-release.** Twig API + native `ImageTransformer` + three drivers
+> are built and `php -l` clean; all Craft API calls are verified against Craft
+> 5.10.8.1 vendored source. Not yet run end-to-end in a live site — the install +
+> render recipe is in `docs/DDEV-TESTING.md`. See
+> [`../lithocinch/SPEC.md`](../lithocinch/SPEC.md) for the full design.
 
 ## How it works
 
 ```
-Twig  ──▶  Crisp (PHP)  ──reads source via Craft Fs (GCS/S3/local)──▶  driver
-                                                                         │
-                          lithocinch engine (Node/sharp)  ◀─────────┘
+Twig  ──▶  Lithocinch (PHP)  ──reads source via Craft Fs (GCS/S3/local)──▶  driver
+                                                                              │
+                          lithocinch engine (Node/sharp)  ◀──────────────────┘
                           resize + perceptual + auto-format
                                  │  optimized bytes back
                           written to the transform Fs (GCS) + cached by key
@@ -46,7 +66,14 @@ In your Craft project's `composer.json`:
 
 ```bash
 composer require iceboxind/craft-lithocinch:@dev
-php craft plugin/install crisp
+php craft plugin/install litho
+```
+
+To exercise Pro behavior in local dev before a Store license exists, switch the
+active edition:
+
+```bash
+php craft plugin/switch-edition litho pro   # or ...litho lite to go back
 ```
 
 Then copy `config.example.php` → `config/litho.php` and set the driver +

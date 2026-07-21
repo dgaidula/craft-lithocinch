@@ -31,6 +31,35 @@ class Plugin extends BasePlugin
 
     public static Plugin $plugin;
 
+    /**
+     * Two editions, low-to-high. A fresh install defaults to the first (Lite),
+     * so installing the plugin never silently unlocks paid behavior. Pro is
+     * activated by a Store license (or, in dev, `craft plugin/switch-edition
+     * litho pro`). The `is()` / `isPro()` gates below key off this list.
+     *
+     * Split:
+     *  - Lite (free): native ImageTransformer drop-in + craft.litho.url(),
+     *    best non-AVIF format (WebP/JPEG/PNG perceptual pick), focal-aware
+     *    crops, cli driver.
+     *  - Pro (paid): AVIF in the format shootout, craft.litho.picture()
+     *    responsive <picture>/srcset, and the daemon + remote drivers.
+     */
+    public static function editions(): array
+    {
+        return ['lite', 'pro'];
+    }
+
+    /**
+     * True when the active edition is Pro (or higher). Written with the `>=`
+     * operator so it stays correct if a third tier is ever added, and so a
+     * stale/legacy `edition` value (e.g. 'standard' from a pre-editions install)
+     * resolves to false — a safe Lite default rather than a thrown error.
+     */
+    public function isPro(): bool
+    {
+        return $this->is('pro', '>=');
+    }
+
     public static function config(): array
     {
         return [

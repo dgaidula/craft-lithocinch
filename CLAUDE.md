@@ -5,7 +5,8 @@ content-aware image optimization + **best-format delivery**. Targets Craft
 **4.5+ and 5.x**. It's the commercial product on top of the open-source engine at
 `../lithocinch`.
 
-> **Status: pre-alpha.** Twig-API + `cli` driver + a native `ImageTransformer`.
+> **Status: pre-release.** Twig-API (`url()` + `picture()`) + three drivers
+> (cli/daemon/remote) + a native `ImageTransformer` + the Lite/Pro edition split.
 > All Craft API calls **verified against Craft 5.10.8.1** vendored source (the
 > `// VERIFY` markers are resolved). `php -l` clean. **Not yet run end-to-end in a
 > real Craft site** — the install + live-render test recipe is in
@@ -49,12 +50,27 @@ Confirmed correct as written; interfaces are all `@since 4.0.0`, so the 4.5+ tar
   (covers ad-hoc AND named CP transforms — transformer isn't persisted per-transform).
 - Still unverified in a running site: CP form macro field names in `settings.twig`.
 
+## Editions (Lite / Pro) — [done]
+`Plugin::editions()` → `['lite','pro']`; a fresh install defaults to Lite. Gating
+is centralized in `Optimizer` via `Plugin::$plugin->isPro()` (`is('pro','>=')`):
+- **Lite:** native transformer + `craft.litho.url()`, best non-AVIF format
+  (AVIF stripped from `formatPool`), focal crops, `cli` driver only.
+- **Pro:** AVIF in the shootout, `craft.litho.picture()` responsive markup,
+  `daemon`/`remote` drivers.
+- Lite degrades gracefully (never throws): `editionFormatPool()` drops AVIF,
+  `editionFormat()` coerces explicit `avif` → `auto`, `litePicture()` returns a
+  single optimized `<img>`, `driver()` falls back to `cli` (logged).
+- Dev: force Pro with `php craft plugin/switch-edition litho pro`. Editions are
+  declared in code + priced in Craft Console — nothing edition-related goes in
+  `composer.json`.
+
 ## Next milestones (from SPEC §11)
 1. ~~**Native `ImageTransformer`**~~ **[done, untested in-site]** — `LithoTransformer`
    + `useAsDefaultTransformer`. Needs the live DDEV render test (`docs/DDEV-TESTING.md`).
-2. **On-upload layer**: cap + perceptually compress the stored original (keep
+2. ~~**Lite/Pro edition split**~~ **[done]** — see above.
+3. **On-upload layer**: cap + perceptually compress the stored original (keep
    format) for GCS savings on CAF/TLB.
-3. Bulk utility + queue jobs + savings dashboard; editions/licensing.
+4. Bulk utility + queue jobs + savings dashboard (Pro point-release).
 
 ## Test target sites
 DDEV Craft 5.10 + `craftcms/google-cloud`: `lunchbox-craft-cms-ddev`,
