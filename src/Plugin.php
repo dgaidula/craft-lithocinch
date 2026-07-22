@@ -5,13 +5,19 @@ namespace iceboxind\lithocinch;
 use Craft;
 use craft\base\Model;
 use craft\base\Plugin as BasePlugin;
+use craft\elements\Asset;
+use craft\events\AssetEvent;
 use craft\events\RegisterComponentTypesEvent;
 use craft\models\ImageTransform;
+use craft\services\Gc;
 use craft\services\ImageTransforms;
+use craft\services\Utilities;
 use craft\web\twig\variables\CraftVariable;
 use iceboxind\lithocinch\imagetransforms\LithoTransformer;
+use iceboxind\lithocinch\migrations\Install;
 use iceboxind\lithocinch\models\Settings;
 use iceboxind\lithocinch\services\Optimizer;
+use iceboxind\lithocinch\utilities\SavingsUtility;
 use iceboxind\lithocinch\variables\LithoVariable;
 use yii\base\Event;
 
@@ -26,7 +32,7 @@ use yii\base\Event;
  */
 class Plugin extends BasePlugin
 {
-    public string $schemaVersion = '0.1.0';
+    public string $schemaVersion = '0.3.0';
     public bool $hasCpSettings = true;
 
     public static Plugin $plugin;
@@ -82,10 +88,9 @@ class Plugin extends BasePlugin
         });
 
         $this->registerImageTransformer();
-
-        // TODO (layer A): on-upload source optimization — hook
-        // craft\services\Assets::EVENT_BEFORE_REPLACE_ASSET / Elements save to cap
-        // + perceptually compress the stored original (keep its format). Toggleable.
+        $this->registerOnUploadOptimization();
+        $this->registerSavingsUtility();
+        $this->registerGc();
     }
 
     /**
@@ -111,6 +116,105 @@ class Plugin extends BasePlugin
                 'transformer' => LithoTransformer::class,
             ]);
         }
+    }
+
+    /**
+     * Layer A (Pro): on-upload source optimization — cap + perceptually compress
+     * the stored ORIGINAL on upload/replace, keeping its format.
+     *
+     * Hook: `Asset::EVENT_BEFORE_HANDLE_FILE`, fired inside `Asset::beforeSave()`
+     * whenever a file operation is coming (new upload, replacement, or move) —
+     * verified against Craft 5.10 vendored source. For uploads/replacements,
+     * `$asset->tempFilePath` is the local file Craft will copy into the volume
+     * in `afterSave()` → `_relocateFile()` (which streams it fresh from disk and
+     * recomputes width/height/size afterwards), so rewriting it in place here is
+     * honored end-to-end. The handler itself skips moves (no tempFilePath).
+     *
+     * The listener is only attached when the (config-overridable) toggle is on,
+     * so the feature is zero-cost for everyone else; the edition gate and all
+     * per-file checks live in Optimizer::optimizeUpload(). The outer try/catch
+     * is belt-and-braces for the safety contract: a failed optimization must
+     * never block or corrupt an upload.
+     */
+    private function registerOnUploadOptimization(): void
+    {
+        if (!$this->getSettings()->onUploadOptimize) {
+            return;
+        }
+
+        Event::on(
+            Asset::class,
+            Asset::EVENT_BEFORE_HANDLE_FILE,
+            function (AssetEvent $event) {
+                try {
+                    $this->optimizer->optimizeUpload($event->asset);
+                } catch (\Throwable $e) {
+                    Craft::warning('On-upload optimize failed (upload proceeds with original bytes): ' . $e->getMessage(), 'lithocinch');
+                }
+            }
+        );
+    }
+
+    /**
+     * Register the Savings utility (Utilities → Lithocinch Savings): the bulk
+     * (re)optimization trigger + total-bytes-saved dashboard (SPEC §4 item 4).
+     *
+     * Pro-gated at REGISTRATION rather than inside contentHtml(): on Lite the
+     * utility simply doesn't appear, which keeps the CP uncluttered and avoids
+     * a dead nav item + a `utility:litho-savings` user-permission entry for a
+     * feature Lite can't run. The upsell surface for Lite is the Store listing
+     * and the plugin settings page, not a locked utility screen. (The trigger
+     * controller and the queue job re-check isPro() independently, so this gate
+     * is presentation, not the security boundary.)
+     */
+    private function registerSavingsUtility(): void
+    {
+        if (!$this->isPro()) {
+            return;
+        }
+
+        Event::on(
+            Utilities::class,
+            Utilities::EVENT_REGISTER_UTILITIES,
+            static function (RegisterComponentTypesEvent $event) {
+                $event->types[] = SavingsUtility::class;
+            }
+        );
+    }
+
+    /**
+     * Prune the Savings dashboard's detail ledger (`litho_optimization_log`)
+     * on Craft's own garbage-collection pass — piggybacking on Craft's
+     * existing `gc/run` cron/CLI mechanism rather than the plugin inventing
+     * its own scheduler. Deletes rows older than `savingsLogRetentionDays`
+     * (`0` = keep everything, never prune).
+     *
+     * This ONLY touches the detail ledger. The dashboard's lifetime totals
+     * (`litho_optimization_totals`, maintained by atomic increment in
+     * Optimizer::logSavings()) are never pruned — that's the whole point of
+     * the two-table split: the headline "bytes saved" number survives GC
+     * forever, even as the detail rows behind it get cleaned up.
+     */
+    private function registerGc(): void
+    {
+        Event::on(Gc::class, Gc::EVENT_RUN, function (Event $event) {
+            $days = $this->getSettings()->savingsLogRetentionDays;
+            if ($days <= 0) {
+                return; // pruning disabled — keep every detail row forever
+            }
+
+            try {
+                if (!Craft::$app->getDb()->tableExists(Install::TABLE)) {
+                    return;
+                }
+                $cutoff = (new \DateTime())->modify("-{$days} days");
+                Craft::$app->getDb()->createCommand()
+                    ->delete(Install::TABLE, ['<', 'dateCreated', $cutoff->format('Y-m-d H:i:s')])
+                    ->execute();
+            } catch (\Throwable $e) {
+                Craft::warning("Lithocinch savings-log GC prune failed: {$e->getMessage()}", 'lithocinch');
+            }
+        });
     }
 
     protected function createSettingsModel(): ?Model

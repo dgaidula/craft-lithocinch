@@ -5,11 +5,16 @@ namespace iceboxind\lithocinch\services;
 use Craft;
 use craft\base\Component;
 use craft\elements\Asset;
+use craft\helpers\Assets as AssetsHelper;
+use craft\helpers\Db;
+use craft\helpers\FileHelper;
 use iceboxind\lithocinch\drivers\CliDriver;
 use iceboxind\lithocinch\drivers\DriverInterface;
 use iceboxind\lithocinch\drivers\HttpDriver;
+use iceboxind\lithocinch\migrations\Install;
 use iceboxind\lithocinch\models\Settings;
 use iceboxind\lithocinch\Plugin;
+use Throwable;
 use Twig\Markup;
 
 /**
@@ -32,6 +37,22 @@ class Optimizer extends Component
 
     /** Formats reserved for Pro. Lite delivers the best non-AVIF modern format. */
     private const PRO_ONLY_FORMATS = ['avif'];
+
+    /**
+     * Extensions the on-upload layer will rewrite in place. Deliberately
+     * conservative: JPEG/PNG/WebP are the formats where cap + same-format
+     * perceptual re-encode is an unambiguous win. GIF (animation), SVG (vector,
+     * no pixel cap), TIFF (print masters), and AVIF (already efficient) are
+     * skipped silently — a skipped file is always safe.
+     */
+    private const ON_UPLOAD_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
+
+    /** Engine output `format` -> the source extensions it legitimately matches. */
+    private const ON_UPLOAD_FORMAT_EXTS = [
+        'jpeg' => ['jpg', 'jpeg'],
+        'png' => ['png'],
+        'webp' => ['webp'],
+    ];
 
     /** Single best <img> src for an asset. */
     public function url(Asset $asset, array $opts = []): ?string
@@ -110,6 +131,245 @@ class Optimizer extends Component
             'defaults' => $this->defaults(),
         ]);
         return isset($outputs[0]) ? $this->store($asset, $key, $outputs[0]) : [];
+    }
+
+    /**
+     * Bulk-(re)optimization entry point for the Savings utility's queue job (Pro).
+     *
+     * "Bulk optimize" here means: pre-warm the DEFAULT delivery variant (auto
+     * format shootout, delivery maxSize cap, no explicit width) through the exact
+     * same driver + store plumbing as url()/picture(). It deliberately skips the
+     * cache read and re-runs the transform on every call, so re-optimizing after
+     * a settings change produces fresh output; store() is idempotent on the
+     * transform Fs (won't rewrite a file that's already there), but — being a
+     * genuinely new variant from the cache's point of view — DOES append a fresh
+     * row to the savings ledger via store()'s own logSavings() call. This method
+     * no longer writes to that ledger itself; it just reports the delta back to
+     * the caller (BulkOptimizeJob) for progress/UI purposes.
+     *
+     * Rewriting the stored original is explicitly NOT this method's job — that is
+     * optimizeUpload()'s (destructive, opt-in) surface. This one is safe to run
+     * on everything: it only writes variants to the transform Fs.
+     *
+     * @return array{bytesBefore: int, bytesAfter: int, format: string, url: ?string}|null
+     *         null when the driver produced no output for the asset.
+     */
+    public function bulkOptimize(Asset $asset): ?array
+    {
+        $source = $asset->getContents();
+        $format = $this->editionFormat('auto');
+        $ops = $this->ops($asset, []);
+
+        $outputs = $this->driver()->transform($source, [
+            'ops' => $ops,
+            'format' => $format,
+            'defaults' => $this->defaults(),
+        ]);
+        if (!isset($outputs[0])) {
+            return null;
+        }
+
+        $meta = $this->store($asset, $this->cacheKey($asset, $ops, $format), $outputs[0]);
+
+        return [
+            'bytesBefore' => strlen($source),
+            'bytesAfter' => strlen($outputs[0]['data']),
+            'format' => $outputs[0]['format'],
+            'url' => $meta['url'],
+        ];
+    }
+
+    // ---- layer A: on-upload source optimization (Pro) -----------------------
+
+    /**
+     * Cap + perceptually compress a just-uploaded original IN PLACE, keeping its
+     * format. Called from `Asset::EVENT_BEFORE_HANDLE_FILE` (fired inside
+     * `Asset::beforeSave()` on new uploads AND replacements — verified against
+     * Craft 5.10 vendored source). At that point `$asset->tempFilePath` is the
+     * local path Craft will later copy into the volume: `afterSave()` →
+     * `_relocateFile()` opens a FRESH `fopen($tempPath, 'rb')` stream (no cached
+     * buffer), then recomputes `_width`/`_height`/`size`/`dateModified` from the
+     * temp file — so overwriting it here is fully honored and the asset record
+     * self-corrects to the optimized dimensions. Craft's own image sanitation
+     * (`Image::cleanImageByPath()`) also runs after this event, on our output.
+     *
+     * Safety contract (the upload must NEVER be blocked, corrupted, or lost):
+     *  - off by default; Pro-only (silent no-op on Lite);
+     *  - with `onUploadKeepBackup` on, the pristine bytes are verifiably copied
+     *    to the backup location BEFORE anything can overwrite them — if the
+     *    backup cannot be secured, the optimization is skipped entirely;
+     *  - any driver/engine failure, format mismatch, or zero-savings result
+     *    logs a warning/info and leaves the original untouched;
+     *  - the overwrite itself is write-sibling-then-rename, so a mid-write
+     *    failure can never leave a truncated file at tempFilePath.
+     *
+     * Recovery story: backups land at `<backupFs>/<subpath>/YYYY-MM-DD/<uniq>-<filename>`
+     * (or `storage/lithocinch/originals/YYYY-MM-DD/<uniq>-<filename>` when no
+     * backup Fs is configured). To restore, find the file by name + upload date
+     * and replace the asset with it in the CP. Backups are never deleted by the
+     * plugin — prune on your own schedule.
+     */
+    public function optimizeUpload(Asset $asset): void
+    {
+        $s = Plugin::$plugin->getSettings();
+
+        // Off by default; Pro-only. Both gates are silent no-ops.
+        if (!$s->onUploadOptimize || !Plugin::$plugin->isPro()) {
+            return;
+        }
+
+        // The event also fires for moves/renames (newLocation set, no temp file)
+        // — only a new upload/replacement carries a local temp file to optimize.
+        $path = $asset->tempFilePath;
+        if (!$path || !is_file($path)) {
+            return;
+        }
+
+        $filename = $this->uploadFilename($asset);
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        if (!in_array($ext, self::ON_UPLOAD_EXTENSIONS, true)) {
+            return; // non-image, or a format we deliberately don't rewrite
+        }
+
+        $source = @file_get_contents($path);
+        if ($source === false || $source === '') {
+            Craft::warning("On-upload optimize: could not read temp file for \"{$filename}\"; upload proceeds untouched.", 'lithocinch');
+            return;
+        }
+
+        // One-way-door safety net: secure the pristine bytes BEFORE anything can
+        // overwrite them. If the backup can't be verified written, skip the
+        // optimization entirely — the upload proceeds with the original bytes.
+        if ($s->onUploadKeepBackup && !$this->backupOriginal($filename, $source)) {
+            return;
+        }
+
+        try {
+            // `format: 'keep'` = cap + perceptually compress WITHOUT converting
+            // (engine maps it to format:null). `ops.maxSize` overrides the
+            // delivery-layer default. `keepMetadata: true` because rewriting a
+            // stored original should preserve embedded EXIF/XMP (copyright,
+            // orientation) — stripping is a delivery-layer economy, not a
+            // source-of-truth one.
+            $outputs = $this->driver()->transform($source, [
+                'ops' => ['maxSize' => $s->onUploadMaxSize],
+                'format' => 'keep',
+                'defaults' => [
+                    'perceptualTarget' => $s->perceptualTarget,
+                    'keepMetadata' => true,
+                ],
+            ]);
+        } catch (Throwable $e) {
+            Craft::warning("On-upload optimize failed for \"{$filename}\" (upload proceeds untouched): {$e->getMessage()}", 'lithocinch');
+            return;
+        }
+
+        $out = $outputs[0] ?? null;
+        $data = is_array($out) ? (string)($out['data'] ?? '') : '';
+        if ($data === '') {
+            Craft::warning("On-upload optimize: empty engine output for \"{$filename}\"; upload proceeds untouched.", 'lithocinch');
+            return;
+        }
+
+        // Belt-and-braces format guard: if the engine somehow returned a
+        // different format than the source extension, refuse the overwrite —
+        // the on-upload layer must never change a file's format/extension.
+        $format = is_array($out) ? (string)($out['format'] ?? '') : '';
+        if (!in_array($ext, self::ON_UPLOAD_FORMAT_EXTS[$format] ?? [], true)) {
+            Craft::warning("On-upload optimize: engine returned \"{$format}\" for .{$ext} \"{$filename}\" — refusing to change the source format; upload proceeds untouched.", 'lithocinch');
+            return;
+        }
+
+        if (strlen($data) >= strlen($source)) {
+            Craft::info("On-upload optimize: \"{$filename}\" is already optimal (no byte savings); left untouched.", 'lithocinch');
+            return;
+        }
+
+        // Write-sibling-then-rename so a mid-write failure can never leave a
+        // truncated file where Craft is about to read the upload from.
+        $tmp = $path . '.litho';
+        if (@file_put_contents($tmp, $data) !== strlen($data) || !@rename($tmp, $path)) {
+            if (is_file($tmp)) {
+                @unlink($tmp);
+            }
+            Craft::warning("On-upload optimize: could not replace temp file for \"{$filename}\"; upload proceeds untouched.", 'lithocinch');
+            return;
+        }
+
+        $pct = round((1 - strlen($data) / strlen($source)) * 100, 1);
+        Craft::info(sprintf(
+            'On-upload optimize: "%s" %d -> %d bytes (-%s%%), kept %s.',
+            $filename,
+            strlen($source),
+            strlen($data),
+            $pct,
+            $format
+        ), 'lithocinch');
+    }
+
+    /**
+     * Copy the pristine original bytes to the backup location, verifying the
+     * write. Returns false (after logging) on ANY doubt — the caller treats
+     * false as "do not optimize". Backups are date-partitioned and uniquely
+     * prefixed, so repeated uploads/replacements of the same filename never
+     * clobber an earlier backup.
+     */
+    private function backupOriginal(string $filename, string $bytes): bool
+    {
+        $s = Plugin::$plugin->getSettings();
+        $leaf = date('Y-m-d') . '/' . uniqid('', false) . '-' . $filename;
+
+        try {
+            if ($s->onUploadBackupFsHandle) {
+                $fs = Craft::$app->getFs()->getFilesystemByHandle($s->onUploadBackupFsHandle);
+                if (!$fs) {
+                    Craft::warning("On-upload optimize: backup Fs handle \"{$s->onUploadBackupFsHandle}\" not found; skipping optimization for \"{$filename}\".", 'lithocinch');
+                    return false;
+                }
+                $bpath = trim($s->onUploadBackupSubpath, '/') . '/' . $leaf;
+                $fs->write($bpath, $bytes); // throws on failure — caught below
+                Craft::info("On-upload optimize: pristine original backed up to {$s->onUploadBackupFsHandle}:{$bpath}", 'lithocinch');
+                return true;
+            }
+
+            // No backup Fs configured: fall back to a local directory on the
+            // web server (survives the request; NOT deploy-artifact storage —
+            // point onUploadBackupFsHandle at a bucket for real durability).
+            $file = Craft::$app->getPath()->getStoragePath() . '/lithocinch/originals/' . $leaf;
+            FileHelper::createDirectory(dirname($file));
+            if (@file_put_contents($file, $bytes) !== strlen($bytes)) {
+                Craft::warning("On-upload optimize: could not write local backup for \"{$filename}\"; skipping optimization.", 'lithocinch');
+                return false;
+            }
+            Craft::info("On-upload optimize: pristine original backed up to {$file}", 'lithocinch');
+            return true;
+        } catch (Throwable $e) {
+            Craft::warning("On-upload optimize: backup failed for \"{$filename}\" ({$e->getMessage()}); skipping optimization.", 'lithocinch');
+            return false;
+        }
+    }
+
+    /**
+     * The asset's destination filename at EVENT_BEFORE_HANDLE_FILE time. New
+     * uploads carry it in `newLocation` ("{folder:ID}name.ext" — set in
+     * beforeSave() before the event fires); replacements have `_filename` set.
+     * The temp-file basename is a last resort (it may be a randomized name).
+     */
+    private function uploadFilename(Asset $asset): string
+    {
+        if ($asset->newLocation) {
+            try {
+                [, $filename] = AssetsHelper::parseFileLocation($asset->newLocation);
+                return $filename;
+            } catch (Throwable) {
+                // fall through
+            }
+        }
+        try {
+            return $asset->getFilename();
+        } catch (Throwable) {
+            return basename((string)$asset->tempFilePath);
+        }
     }
 
     // ---- internals ----------------------------------------------------------
@@ -252,7 +512,12 @@ class Optimizer extends Component
             . '/' . $asset->id . '/' . substr($key, 6) . '.' . $ext;
 
         $fs = $this->fs();
-        if ($fs && !$fs->fileExists($path)) {
+        // True only when we actually just wrote real bytes to a real transform
+        // Fs — NOT when $fs is null (no transform Fs configured, nothing was
+        // stored anywhere). That distinction matters below: logSavings() must
+        // never fire for a "variant" that was never actually delivered.
+        $wroteNewFile = $fs !== null && !$fs->fileExists($path);
+        if ($wroteNewFile) {
             $fs->write($path, $output['data']); // BaseFsInterface::write(string,string,array $config=[]) — verified Craft 5.10
         }
 
@@ -264,7 +529,92 @@ class Optimizer extends Component
             'url' => $this->fsUrl($path),
         ];
         Craft::$app->getCache()->set($key, $meta); // no TTL; invalidated by key (source mtime + settings)
+
+        // Only log when we actually just wrote a genuinely new file to a real
+        // transform Fs (not a re-write of one that already existed, and not a
+        // no-op when no Fs is configured) — keeps the savings ledger honest:
+        // one row per real byte-savings event that was actually delivered.
+        // cacheGet() is the fast path that skips store() entirely on a real
+        // cache hit, so this is still the natural "we did real work" hook.
+        if ($wroteNewFile) {
+            $this->logSavings($asset, $output);
+        }
+
         return $meta;
+    }
+
+    /**
+     * Record a real variant generation for the Pro savings dashboard — called
+     * from store() so EVERY source of variants (organic url()/picture()
+     * template hits and bulk-optimize runs alike) feeds it, not just manual
+     * bulk runs. Two writes, deliberately split so the dashboard's headline
+     * numbers never depend on scanning an unbounded table:
+     *
+     *  1. An ATOMIC INCREMENT of the single-row lifetime totals
+     *     (`Install::TABLE_TOTALS`) — this is what the dashboard reads, an
+     *     O(1) lookup that stays fast and accurate forever.
+     *  2. An INSERT into the append-only detail ledger (`Install::TABLE`) —
+     *     a bounded, recent-activity window (pruned by `Plugin::registerGc()`
+     *     past the configured retention), useful for a future "recent
+     *     activity" view but never load-bearing for the core totals.
+     *
+     * Pro-only (the dashboard itself is Pro-gated — no point logging for an
+     * edition that can never see the numbers). Never lets a logging failure
+     * take down the actual optimization work it's reporting on.
+     */
+    private function logSavings(Asset $asset, array $output): void
+    {
+        if (!Plugin::$plugin->isPro() || $asset->size === null) {
+            return;
+        }
+
+        $bytesAfter = strlen((string)($output['data'] ?? ''));
+        if ($bytesAfter <= 0 || $bytesAfter >= $asset->size) {
+            return; // nothing saved (or nothing to compare against) — not worth a row
+        }
+        $bytesBefore = $asset->size;
+
+        $db = Craft::$app->getDb();
+
+        try {
+            if (!$db->tableExists(Install::TABLE_TOTALS)) {
+                return; // migration hasn't run yet on this install
+            }
+            // Atomic increment via SQL expression (value computed server-side
+            // from the current row, not read-modify-write in PHP) — safe under
+            // concurrent requests. The totals row is seeded by the install
+            // migration, so this is always an UPDATE, never an upsert.
+            $db->createCommand()->update(
+                Install::TABLE_TOTALS,
+                [
+                    'variants' => new \yii\db\Expression('[[variants]] + 1'),
+                    'bytesBefore' => new \yii\db\Expression('[[bytesBefore]] + :bb', [':bb' => $bytesBefore]),
+                    'bytesAfter' => new \yii\db\Expression('[[bytesAfter]] + :ba', [':ba' => $bytesAfter]),
+                    'dateUpdated' => Db::prepareDateForDb(new \DateTime()),
+                ]
+            )->execute();
+        } catch (Throwable $e) {
+            Craft::warning("Lithocinch savings totals update failed: {$e->getMessage()}", 'lithocinch');
+        }
+
+        try {
+            if (!$db->tableExists(Install::TABLE)) {
+                return;
+            }
+            // Db::insert() auto-fills dateCreated/dateUpdated/uid (same helper
+            // BulkOptimizeJob already uses via Db::upsert() — verified Craft 5.10).
+            Db::insert(Install::TABLE, [
+                'assetId' => $asset->id,
+                'bytesBefore' => $bytesBefore,
+                'bytesAfter' => $bytesAfter,
+                'format' => $output['format'] ?? null,
+            ]);
+        } catch (Throwable $e) {
+            // The lifetime totals above already landed — a lost detail row
+            // only shrinks the "recent activity" window, never the headline
+            // numbers, so this is a warning, not a rollback of the increment.
+            Craft::warning("Lithocinch savings log insert failed: {$e->getMessage()}", 'lithocinch');
+        }
     }
 
     /** The configured transform filesystem (e.g. your GCS bucket). */

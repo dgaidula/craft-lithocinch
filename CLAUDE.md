@@ -28,10 +28,14 @@ read it first.
 - `src/Plugin.php` — registers `craft.litho.*` + settings.
 - `src/models/Settings.php` — driver, endpoints, transform Fs handle, perceptual target, responsive defaults.
 - `src/drivers/` — `DriverInterface`, `CliDriver` (Symfony Process), `HttpDriver` (Guzzle; daemon+remote), `Outputs` decoder.
-- `src/services/Optimizer.php` — asset+opts → cached variant URL(s); batches misses; builds `<picture>`/srcset; focal-point aware. **The heart.**
+- `src/services/Optimizer.php` — asset+opts → cached variant URL(s); batches misses; builds `<picture>`/srcset; focal-point aware; `store()` logs every genuinely new variant via `logSavings()` (atomic increment on the totals table + an insert into the bounded detail ledger). **The heart.**
 - `src/imagetransforms/LithoTransformer.php` — native Craft `ImageTransformer`; routes `asset.getUrl({width})` through Lithocinch. Opt-in via `useAsDefaultTransformer`.
 - `src/variables/LithoVariable.php` — `craft.litho.url()` / `.picture()`.
-- `src/templates/settings.twig`, `config.example.php`.
+- `src/utilities/SavingsUtility.php` — Pro CP utility (Utilities → Lithocinch Savings): reads the O(1) lifetime-totals table for headline numbers + a distinct-assets count from the (bounded) detail ledger, plus the bulk-optimize trigger. Registered in `Plugin::init()` (Pro-gated at registration).
+- `src/jobs/BulkOptimizeJob.php` — queue job: image assets → `Optimizer::bulkOptimize()`, which itself logs via `store()`. The job doesn't write to the log directly.
+- `src/controllers/UtilityController.php` — `litho/utility/optimize` POST → queue push.
+- `src/migrations/` — `Install.php` creates two tables: `litho_optimization_totals` (single-row lifetime totals, atomic-incremented, never pruned) and `litho_optimization_log` (bounded, append-only detail ledger, pruned via `Plugin::registerGc()` on Craft's own `Gc::EVENT_RUN` — see `savingsLogRetentionDays`). Numbered migrations pick up new tables on existing dev installs. Bump `$schemaVersion` when adding migrations.
+- `src/templates/settings.twig`, `src/templates/utility.twig`, `config.example.php`.
 
 ## Conventions
 - PSR-4 `iceboxind\lithocinch\` → `src/`. `php -l` before commit (no PHP runtime here
@@ -75,7 +79,9 @@ is centralized in `Optimizer` via `Plugin::$plugin->isPro()` (`is('pro','>=')`):
 2. ~~**Lite/Pro edition split**~~ **[done]** — see above.
 3. **On-upload layer**: cap + perceptually compress the stored original (keep
    format) for GCS savings on CAF/TLB.
-4. Bulk utility + queue jobs + savings dashboard (Pro point-release).
+4. ~~Bulk utility + queue jobs + savings dashboard~~ **[built 2026-07-21, code-review +
+   `php -l` clean; DDEV verification pending]** — Savings utility + `BulkOptimizeJob` +
+   `litho_optimization_log`. Fast-follows: element-index action, dashboard polish.
 
 ## Test target sites
 DDEV Craft 5.10 + `craftcms/google-cloud`: `lunchbox-craft-cms-ddev`,

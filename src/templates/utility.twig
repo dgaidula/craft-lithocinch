@@ -1,0 +1,64 @@
+{# Lithocinch Savings utility (Pro): running bytes-saved totals + the bulk
+   (re)optimization trigger. The tally is a live ledger — every real variant
+   Lithocinch generates (organic template hits, not just bulk runs) adds to
+   it — so this grows with real site traffic, not just manual bulk runs.
+   Deliberately minimal for v1: a few stat rows off one aggregate query, not
+   an analytics product. #}
+{% import "_includes/forms" as forms %}
+
+<h2>{{ 'Savings so far'|t('litho') }}</h2>
+
+{% if stats.variants %}
+    <table class="data" style="margin-bottom: 24px;">
+        <tbody>
+            <tr>
+                <th class="light">{{ 'Variants generated'|t('litho') }}</th>
+                <td>{{ stats.variants|number }}</td>
+            </tr>
+            <tr>
+                <th class="light">
+                    {{ stats.assetsWindowDays > 0
+                        ? 'Assets touched (last {days} days)'|t('litho', {days: stats.assetsWindowDays})
+                        : 'Assets touched'|t('litho') }}
+                </th>
+                <td>{{ stats.assets|number }}</td>
+            </tr>
+            <tr>
+                <th class="light">{{ 'Bytes before'|t('litho') }}</th>
+                <td>{{ stats.bytesBefore|filesize }}</td>
+            </tr>
+            <tr>
+                <th class="light">{{ 'Bytes after'|t('litho') }}</th>
+                <td>{{ stats.bytesAfter|filesize }}</td>
+            </tr>
+            <tr>
+                <th class="light">{{ 'Saved'|t('litho') }}</th>
+                <td><strong>{{ stats.bytesSaved|filesize }} ({{ stats.percentSaved }}%)</strong></td>
+            </tr>
+        </tbody>
+    </table>
+{% else %}
+    <p class="light">{{ 'No variants generated yet — visit a page that uses craft.litho.url()/picture(), or run a bulk optimization below to start the tally.'|t('litho') }}</p>
+{% endif %}
+
+<hr>
+
+<h2>{{ 'Bulk optimization'|t('litho') }}</h2>
+
+<p>{{ 'Runs every image asset (optionally scoped to one volume) through the Lithocinch delivery pipeline at your default settings — pre-generating the best-format variant. Re-running with unchanged settings is a safe no-op (the variant already exists, so it isn\'t re-counted); if your settings changed, the new variant adds its own entry to the tally above. Originals are never modified.'|t('litho') }}</p>
+
+<form method="post" accept-charset="UTF-8">
+    {{ csrfInput() }}
+    {{ actionInput('litho/utility/optimize') }}
+    {{ redirectInput('utilities/litho-savings') }}
+
+    {{ forms.selectField({
+        label: 'Scope'|t('litho'),
+        instructions: 'Limit the run to a single volume, or optimize everything.'|t('litho'),
+        id: 'volumeId',
+        name: 'volumeId',
+        options: volumeOptions,
+    }) }}
+
+    <button type="submit" class="btn submit">{{ 'Queue bulk optimization'|t('litho') }}</button>
+</form>

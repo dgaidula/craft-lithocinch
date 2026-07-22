@@ -73,3 +73,49 @@
     value: settings.maxSize,
     size: 6,
 }) }}
+
+<hr>
+
+<h2>On-upload source optimization (Pro)</h2>
+
+{{ forms.lightswitchField({
+    label: 'Optimize originals on upload',
+    instructions: 'Cap + perceptually compress the stored original on upload/replace, keeping its format. Destructive — the original is rewritten — so leave the backup toggle on. Pro only; off by default.',
+    id: 'onUploadOptimize',
+    name: 'onUploadOptimize',
+    on: settings.onUploadOptimize,
+}) }}
+
+{{ forms.lightswitchField({
+    label: 'Keep a backup of the pristine original',
+    instructions: 'Copies the untouched upload to the backup filesystem (or `storage/lithocinch/originals/`) before optimizing. If the backup cannot be secured, the optimization is skipped. Strongly recommended.',
+    id: 'onUploadKeepBackup',
+    name: 'onUploadKeepBackup',
+    on: settings.onUploadKeepBackup,
+}) }}
+
+{{ forms.textField({
+    label: 'On-upload max dimension (px)',
+    instructions: 'Cap for the stored original — deliberately separate from (and more generous than) the delivery cap above.',
+    id: 'onUploadMaxSize',
+    name: 'onUploadMaxSize',
+    value: settings.onUploadMaxSize,
+    size: 6,
+}) }}
+
+{{ forms.textField({
+    label: 'Backup filesystem handle',
+    instructions: 'Craft filesystem for pristine-original backups (e.g. a cold-storage bucket). Blank = local `storage/lithocinch/originals/` on the web server.',
+    id: 'onUploadBackupFsHandle',
+    name: 'onUploadBackupFsHandle',
+    value: settings.onUploadBackupFsHandle,
+}) }}
+
+{{ forms.textField({
+    label: 'Savings log retention (days)',
+    instructions: 'How long the Savings dashboard keeps detail activity rows before Craft\'s garbage collection prunes them. The lifetime "bytes saved" totals are never pruned — this only bounds the detail ledger. 0 = keep forever.',
+    id: 'savingsLogRetentionDays',
+    name: 'savingsLogRetentionDays',
+    value: settings.savingsLogRetentionDays,
+    size: 6,
+}) }}

@@ -17,8 +17,43 @@ Initial release. Two editions (Lite / Pro).
 - Three backend drivers (cli / daemon / remote) over the lithocinch transform
   service; bytes-in/bytes-out, storage via Craft Fs (GCS-safe).
 - Key-based variant caching written to a configurable transform filesystem.
+- **On-upload source optimization (Pro)** — cap + perceptually compress the
+  stored original on upload/replace, keeping its format (never converts; format
+  conversion stays at the delivery layer). Hooks `Asset::EVENT_BEFORE_HANDLE_FILE`
+  and rewrites the temp file before Craft copies it into the volume.
+  - Off by default (`onUploadOptimize`); silent no-op on Lite.
+  - Pristine-original backups on by default (`onUploadKeepBackup`): bytes are
+    copied to the backup Fs (`onUploadBackupFsHandle` + subpath) or to local
+    `storage/lithocinch/originals/` **before** anything is overwritten; if the
+    backup can't be secured, the optimization is skipped.
+  - A failed/unreachable engine, a format mismatch, or a zero-savings result
+    leaves the upload untouched — never blocks or corrupts an upload.
+  - Only JPEG/PNG/WebP are rewritten; GIF/SVG/TIFF/AVIF and non-images skipped.
+- **Bulk optimization utility + savings dashboard (Pro)** — Utilities →
+  “Lithocinch Savings”: a running total of real, ongoing savings — every
+  variant Lithocinch generates, from normal `url()`/`picture()` template hits
+  *and* bulk runs alike — plus a bulk (re)optimization trigger for existing
+  libraries (all volumes or one).
+  - `Optimizer::store()` logs every genuinely new variant it writes — so the
+    dashboard reflects real bytes saved across actual site traffic, not a
+    one-time bulk-run snapshot. The bulk job just drives the same pipeline
+    for existing assets; it doesn’t log separately.
+  - **Two-table design so the numbers stay fast and honest as the log grows**:
+    a single-row lifetime-totals table (`litho_optimization_totals`,
+    maintained by atomic increment) backs the dashboard’s headline numbers —
+    an O(1) read regardless of site history — while the detail activity
+    ledger (`litho_optimization_log`) is a *bounded* recent-activity window,
+    pruned by Craft’s own garbage collection (new `savingsLogRetentionDays`
+    setting, default 90; `0` disables pruning). Pruning the detail ledger
+    never touches the lifetime totals. Originals are never modified by any
+    of this — that’s the separate on-upload layer.
+  - v1 dashboard is deliberately minimal — a few stat rows, no charts or
+    history. Per-asset failures during a bulk run are logged and skipped,
+    never fatal.
+  - First install migration (`migrations/Install.php`); schema version 0.3.0
+    (existing dev installs pick up new tables via numbered migrations).
 - Settings model + CP settings + `config/litho.php` overrides.
 
 ### Next
-- On-upload source optimization (cap + perceptual, keep format) for GCS savings.
-- Bulk utility + queue jobs + savings dashboard (Pro point-release).
+- Savings dashboard polish (per-volume breakdown, history, element-index
+  “Optimize” action) — fast-follow, not launch-blocking.

@@ -32,6 +32,25 @@ return [
         'defaultFormats' => ['avif', 'webp', 'auto'],
         'defaultWidths' => [400, 800, 1200, 1600],
         'timeout' => 60,
+
+        // --- Layer A: on-upload source optimization (Pro) — DESTRUCTIVE, read the README ---
+        // Caps + perceptually compresses the stored ORIGINAL on upload/replace,
+        // keeping its format (never converts). Off by default. With the backup
+        // toggle on, the pristine bytes are copied to the backup Fs (or to local
+        // storage/lithocinch/originals/) BEFORE anything is overwritten; if the
+        // backup cannot be secured, the optimization is skipped.
+        'onUploadOptimize' => false,
+        'onUploadKeepBackup' => true,
+        'onUploadMaxSize' => 3840, // stored-source cap; separate from the delivery 'maxSize' above
+        // 'onUploadBackupFsHandle' => 'gcsColdStorage', // a Craft Fs handle; blank = local storage dir
+        'onUploadBackupSubpath' => '_litho-originals',
+
+        // Savings dashboard (Pro): how long the detail activity ledger keeps
+        // rows before Craft's own garbage collection prunes them. The lifetime
+        // "bytes saved" totals are a separate running total and are NEVER
+        // pruned — this only bounds the (optional, recent-activity) detail
+        // table. 0 = keep every detail row forever.
+        'savingsLogRetentionDays' => 90,
     ],
 
     // 'dev' => [ 'driver' => 'cli' ],
