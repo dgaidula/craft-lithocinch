@@ -8,9 +8,12 @@ use craft\queue\BaseJob;
 use iceboxind\lithocinch\Plugin;
 
 /**
- * Bulk (re)optimization queue job (Pro), pushed from the Savings utility.
+ * Bulk (re)optimization queue job (Pro), pushed from the Savings utility
+ * (whole library / one volume) or the Assets-index "Optimize with Lithocinch"
+ * action (an explicit assetIds selection).
  *
- * Iterates image assets (optionally scoped to one volume) and runs each
+ * Iterates image assets (optionally scoped to one volume, or to an explicit
+ * set of asset IDs) and runs each
  * through Optimizer::bulkOptimize() — the same driver/store plumbing as
  * url()/picture(), pre-warming the default delivery variant. Optimizer's
  * store() logs every genuinely new variant to the savings ledger on its own
@@ -25,11 +28,20 @@ class BulkOptimizeJob extends BaseJob
     /**
      * Extensions the engine's decode path handles. kind('image') also matches
      * things like SVG, which the raster pipeline shouldn't touch — skip those.
+     * Public so the element-index action (OptimizeAssets) applies the exact
+     * same eligibility filter — one list, one skip policy.
      */
-    private const SUPPORTED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'tif', 'tiff', 'avif'];
+    public const SUPPORTED_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'tif', 'tiff', 'avif'];
 
     /** Optional volume scope; null = all volumes. */
     public ?int $volumeId = null;
+
+    /**
+     * Optional explicit asset-ID scope (set by the Assets-index action for
+     * large selections); null = no ID filter. Combines with $volumeId if both
+     * are somehow set, though callers use one or the other.
+     */
+    public ?array $assetIds = null;
 
     /**
      * @inheritdoc
@@ -47,6 +59,9 @@ class BulkOptimizeJob extends BaseJob
         $query = Asset::find()->kind('image');
         if ($this->volumeId) {
             $query->volumeId($this->volumeId);
+        }
+        if ($this->assetIds) {
+            $query->id($this->assetIds);
         }
 
         $total = (int)$query->count();

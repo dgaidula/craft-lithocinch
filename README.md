@@ -203,9 +203,16 @@ unchanged settings is a safe no-op — it never double-counts a variant that
 already exists. **Originals are never modified** by any of this — that's the
 separate, opt-in on-upload layer above.
 
+Prefer a scoped, ad-hoc run? Select assets in the **Assets index** (the
+checkboxes in the file browser) and pick **“Optimize with Lithocinch”** from
+the bulk-actions menu — only the selected assets go through the same
+pipeline. A handful runs immediately with concrete feedback (“Optimized 3 of
+3 selected assets (1.2 MB saved)”); larger selections are queued in the
+background, same as a utility run. Non-images and unsupported formats are
+skipped silently. Pro-only — on Lite the action doesn’t appear.
+
 Honest scoping note: this is a v1 dashboard — a few totals, not an analytics
-product. Per-volume breakdowns, history, and an element-index “Optimize”
-action are planned fast-follows.
+product. Per-volume breakdowns and history are planned fast-follows.
 
 ## License
 

@@ -8,11 +8,13 @@ use craft\base\Plugin as BasePlugin;
 use craft\elements\Asset;
 use craft\events\AssetEvent;
 use craft\events\RegisterComponentTypesEvent;
+use craft\events\RegisterElementActionsEvent;
 use craft\models\ImageTransform;
 use craft\services\Gc;
 use craft\services\ImageTransforms;
 use craft\services\Utilities;
 use craft\web\twig\variables\CraftVariable;
+use iceboxind\lithocinch\elements\actions\OptimizeAssets;
 use iceboxind\lithocinch\imagetransforms\LithoTransformer;
 use iceboxind\lithocinch\migrations\Install;
 use iceboxind\lithocinch\models\Settings;
@@ -90,6 +92,7 @@ class Plugin extends BasePlugin
         $this->registerImageTransformer();
         $this->registerOnUploadOptimization();
         $this->registerSavingsUtility();
+        $this->registerElementActions();
         $this->registerGc();
     }
 
@@ -178,6 +181,35 @@ class Plugin extends BasePlugin
             Utilities::EVENT_REGISTER_UTILITIES,
             static function (RegisterComponentTypesEvent $event) {
                 $event->types[] = SavingsUtility::class;
+            }
+        );
+    }
+
+    /**
+     * Register the "Optimize with Lithocinch" bulk action on the Assets index
+     * (the fast-follow to the Savings utility — SPEC §4 item 4): select some
+     * assets, run just those through the same Optimizer::bulkOptimize()
+     * pipeline the whole-library job uses. Small selections run inline;
+     * larger ones are pushed as an assetIds-scoped BulkOptimizeJob — see
+     * OptimizeAssets for the cutoff rationale.
+     *
+     * Same Pro-gating shape as registerSavingsUtility(): gated at REGISTRATION
+     * so on Lite the action simply never appears in the dropdown (no dead
+     * upsell surface in the actions menu), while OptimizeAssets::performAction()
+     * re-checks isPro() itself as the actual security boundary — a CP page
+     * loaded while Pro then downgraded can still POST the trigger.
+     */
+    private function registerElementActions(): void
+    {
+        if (!$this->isPro()) {
+            return;
+        }
+
+        Event::on(
+            Asset::class,
+            Asset::EVENT_REGISTER_ACTIONS,
+            static function (RegisterElementActionsEvent $event) {
+                $event->actions[] = OptimizeAssets::class;
             }
         );
     }

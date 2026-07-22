@@ -32,7 +32,8 @@ read it first.
 - `src/imagetransforms/LithoTransformer.php` — native Craft `ImageTransformer`; routes `asset.getUrl({width})` through Lithocinch. Opt-in via `useAsDefaultTransformer`.
 - `src/variables/LithoVariable.php` — `craft.litho.url()` / `.picture()`.
 - `src/utilities/SavingsUtility.php` — Pro CP utility (Utilities → Lithocinch Savings): reads the O(1) lifetime-totals table for headline numbers + a distinct-assets count from the (bounded) detail ledger, plus the bulk-optimize trigger. Registered in `Plugin::init()` (Pro-gated at registration).
-- `src/jobs/BulkOptimizeJob.php` — queue job: image assets → `Optimizer::bulkOptimize()`, which itself logs via `store()`. The job doesn't write to the log directly.
+- `src/jobs/BulkOptimizeJob.php` — queue job: image assets → `Optimizer::bulkOptimize()`, which itself logs via `store()`. The job doesn't write to the log directly. Scopeable by `volumeId` (utility) or `assetIds` (index action).
+- `src/elements/actions/OptimizeAssets.php` — Pro "Optimize with Lithocinch" bulk action on the Assets index (`Asset::EVENT_REGISTER_ACTIONS`, Pro-gated at registration + re-checked in `performAction()`). ≤ 5 eligible assets run inline via `bulkOptimize()`; more get queued as an `assetIds`-scoped `BulkOptimizeJob`.
 - `src/controllers/UtilityController.php` — `litho/utility/optimize` POST → queue push.
 - `src/migrations/` — `Install.php` creates two tables: `litho_optimization_totals` (single-row lifetime totals, atomic-incremented, never pruned) and `litho_optimization_log` (bounded, append-only detail ledger, pruned via `Plugin::registerGc()` on Craft's own `Gc::EVENT_RUN` — see `savingsLogRetentionDays`). Numbered migrations pick up new tables on existing dev installs. Bump `$schemaVersion` when adding migrations.
 - `src/templates/settings.twig`, `src/templates/utility.twig`, `config.example.php`.
@@ -81,7 +82,8 @@ is centralized in `Optimizer` via `Plugin::$plugin->isPro()` (`is('pro','>=')`):
    format) for GCS savings on CAF/TLB.
 4. ~~Bulk utility + queue jobs + savings dashboard~~ **[built 2026-07-21, code-review +
    `php -l` clean; DDEV verification pending]** — Savings utility + `BulkOptimizeJob` +
-   `litho_optimization_log`. Fast-follows: element-index action, dashboard polish.
+   `litho_optimization_log`. Fast-follows: ~~element-index action~~ **[built 2026-07-21,
+   `php -l` clean; DDEV verification pending]** (`OptimizeAssets`), dashboard polish.
 
 ## Test target sites
 DDEV Craft 5.10 + `craftcms/google-cloud`: `lunchbox-craft-cms-ddev`,

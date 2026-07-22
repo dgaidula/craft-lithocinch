@@ -52,8 +52,19 @@ Initial release. Two editions (Lite / Pro).
     never fatal.
   - First install migration (`migrations/Install.php`); schema version 0.3.0
     (existing dev installs pick up new tables via numbered migrations).
+- **“Optimize with Lithocinch” Assets-index action (Pro)** — select assets in
+  the Assets index and optimize just those from the bulk-actions menu, a
+  scoped ad-hoc alternative to the whole-library run. Same
+  `Optimizer::bulkOptimize()` pipeline (variants only — originals untouched;
+  savings land on the dashboard automatically). Small selections (≤ 5
+  eligible images) run inline with concrete feedback (“Optimized 3 of 3
+  selected assets (1.2 MB saved)”); larger ones are queued as an
+  asset-ID-scoped `BulkOptimizeJob`. Non-images/unsupported formats are
+  skipped silently; per-asset failures never kill the rest of the selection.
+  Hidden entirely on Lite.
 - Settings model + CP settings + `config/litho.php` overrides.
 
 ### Next
-- Savings dashboard polish (per-volume breakdown, history, element-index
-  “Optimize” action) — fast-follow, not launch-blocking.
+- Savings dashboard polish (per-volume breakdown, history) — fast-follow, not
+  launch-blocking. (The element-index “Optimize” action from this list is
+  built — see above.)
