@@ -6,14 +6,19 @@ content-aware image optimization + **best-format delivery**. Targets Craft
 `../lithocinch`.
 
 > **Status: pre-release.** Twig-API (`url()` + `picture()`) + three drivers
-> (cli/daemon/remote) + a native `ImageTransformer` + the Lite/Pro edition split.
-> All Craft API calls **verified against Craft 5.10.8.1** vendored source (the
-> `// VERIFY` markers are resolved). `php -l` clean. **Verified end-to-end 2026-07-20**
-> against `craft5-plugin-testbed` (Craft 5.10.11): native `ImageTransformer`, `url()`,
-> and `picture()` all produced real AVIF/WebP variants via the `daemon` driver, and the
-> Lite edition's driver-fallback gate fired correctly. Lite's `cli`-driver byte output
-> wasn't exercised (test container's Node/sharp arch mismatch — logic verified by code
-> review, not by execution). See `docs/DDEV-TESTING.md` for the recipe + gotchas.
+> (cli/daemon/remote) + a native `ImageTransformer` + the Lite/Pro edition split +
+> on-upload optimization + the bulk utility/savings dashboard + the Assets-index
+> "Optimize" action. All Craft API calls **verified against Craft 5.10.8.1**
+> vendored source. `php -l` clean. **Verified end-to-end 2026-07-20 and 2026-07-21**
+> against `craft5-plugin-testbed` (Craft 5.10.11): native `ImageTransformer`,
+> `url()`, and `picture()` produce real AVIF/WebP variants via the `daemon` driver;
+> Lite's driver-fallback gate fires correctly; the on-upload destructive path
+> (including its fail-safe skip and a SHA256-verified backup) and the savings
+> ledger's atomic totals + GC pruning all verified live with real evidence — see
+> `docs/DDEV-TESTING.md` and the "Live DDEV verification" sections of
+> `../lithocinch-hq/strategy/craft-store-submission.md` for the full detail.
+> Lite's `cli`-driver byte output still wasn't exercised (test container's
+> Node/sharp arch mismatch — logic verified by code review, not by execution).
 
 ## Architecture
 PHP plugin → reads source bytes via Craft's `Fs` (GCS/S3/local) → a **driver**
@@ -78,12 +83,20 @@ is centralized in `Optimizer` via `Plugin::$plugin->isPro()` (`is('pro','>=')`):
 1. ~~**Native `ImageTransformer`**~~ **[done, verified in-site 2026-07-20]** —
    `LithoTransformer` + `useAsDefaultTransformer`. See `docs/DDEV-TESTING.md`.
 2. ~~**Lite/Pro edition split**~~ **[done]** — see above.
-3. **On-upload layer**: cap + perceptually compress the stored original (keep
-   format) for GCS savings on CAF/TLB.
-4. ~~Bulk utility + queue jobs + savings dashboard~~ **[built 2026-07-21, code-review +
-   `php -l` clean; DDEV verification pending]** — Savings utility + `BulkOptimizeJob` +
-   `litho_optimization_log`. Fast-follows: ~~element-index action~~ **[built 2026-07-21,
-   `php -l` clean; DDEV verification pending]** (`OptimizeAssets`), dashboard polish.
+3. ~~**On-upload layer**~~ **[done, verified live 2026-07-21]** — caps + perceptually
+   compresses the stored original (keeps format) for GCS savings on CAF/TLB.
+   Backup-before-overwrite safety net SHA256-verified byte-identical; fail-safe
+   skip path confirmed (bad backup config → upload proceeds untouched). Note:
+   Craft's own post-upload sanitization re-encodes the file afterward, so the
+   final on-disk size is a bit larger than what Lithocinch logs — see README.
+4. ~~Bulk utility + queue jobs + savings dashboard~~ **[done, verified live
+   2026-07-21]** — Savings utility + `BulkOptimizeJob` + the two-table
+   totals/ledger design (atomic increment, GC-pruned detail ledger). Organic
+   `url()`/`picture()` hits confirmed logging; repeat runs confirmed idempotent
+   (no double-counting); GC pruning confirmed removing old detail rows without
+   touching the lifetime totals. Fast-follow ~~element-index action~~
+   **[done, `OptimizeAssets`]** also built. Remaining fast-follow: dashboard
+   polish (per-volume breakdown, history) — not launch-blocking.
 
 ## Test target sites
 DDEV Craft 5.10 + `craftcms/google-cloud`: `lunchbox-craft-cms-ddev`,

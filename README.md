@@ -164,6 +164,16 @@ unreachable, the result would change format, or there are no byte savings, the
 upload proceeds **untouched** — a failed optimization never blocks or corrupts
 an upload.
 
+> **Honest note on the final size:** the number Lithocinch logs is what its own
+> engine produced. Craft runs its own image-sanitization pass
+> (`Image::cleanImageByPath()`) on the file immediately afterward — a security
+> measure, not something this plugin should (or can) skip — which re-encodes it
+> again at Craft's own default quality. The file that actually lands in your
+> volume is usually a bit larger than Lithocinch's logged number as a result
+> (verified live: a 2.66MB upload logged at 166KB landed at 261KB — still a
+> ~90% reduction, just not the exact logged figure). Don't quote the log line
+> as the final on-disk size; check the asset's actual `size` instead.
+
 ### Backups & recovery
 
 Rewriting an original is a one-way door, so the backup toggle is **on by
