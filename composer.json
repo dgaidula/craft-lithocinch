@@ -5,6 +5,7 @@
     "type": "craft-plugin",
     "license": "Apache-2.0",
     "support": {
+        "email": "support@iceboxind.com",
         "docs": "https://github.com/dgaidula/craft-lithocinch"
     },
     "require": {
@@ -21,7 +22,8 @@
     "extra": {
         "handle": "litho",
         "name": "Lithocinch",
-        "developer": "Danniel T. Gaidula / Icebox Industries",
+        "developer": "Danniel T. Gaidula",
+        "developerUrl": "https://iceboxind.com",
         "class": "iceboxind\\lithocinch\\Plugin"
     }
 }
