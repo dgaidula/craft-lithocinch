@@ -4,6 +4,11 @@
 
 Initial release. Two editions (Lite / Pro).
 
+- **License:** the plugin is now under the Craft License (`LICENSE.md`; `composer.json`
+  `license` is `proprietary`), the Plugin Store’s convention for commercial plugins.
+  Commits published before this change remain available under the Apache-2.0 terms
+  they were released with. The Lithocinch engine itself stays Apache-2.0.
+
 - **Lite / Pro edition split** (`Plugin::editions()` → `['lite', 'pro']`).
   - Lite: native `ImageTransformer` drop-in, `craft.litho.url()`, best non-AVIF
     format (WebP/JPEG/PNG perceptual pick), focal-aware crops, `cli` driver.

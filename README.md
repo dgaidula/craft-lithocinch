@@ -226,5 +226,7 @@ product. Per-volume breakdowns and history are planned fast-follows.
 
 ## License
 
-[Apache-2.0](./LICENSE) © 2026 Danniel T. Gaidula. Open source; the Pro edition and
-support are sold via the Craft Plugin Store.
+[The Craft License](./LICENSE.md) © Danniel T. Gaidula. The plugin is source-available
+and commercial: the Lite edition is free, and the Pro edition and support are sold
+via the Craft Plugin Store. The [Lithocinch engine](https://github.com/dgaidula/lithocinch)
+it drives stays open source under Apache-2.0.
