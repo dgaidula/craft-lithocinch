@@ -1,0 +1,77 @@
+{
+  "tool": "craft-lithocinch + craft-videocinch (D690 first pass)",
+  "run": "d690-gate-2026-11-02 (craft-lithocinch 4285566, craft-videocinch cc6bce4; working mode)",
+  "suite": {
+    "harness": "none in either repo; fixer check script d690/parse-env-check.php plus gate probe d690-gate/probe/edge-probe.php",
+    "pass": 20,
+    "fail": 0,
+    "firstRunGreen": true,
+    "parentCommitsRed": "5 of 10 checks fail on 5383ce9 and on 48a1a6d",
+    "mutants": "10 of 10 killed (M1-M5 per plugin); gate-kit real-tree item ok both repos",
+    "phpLint": "clean, every src/**/*.php in both repos (PHP 8.4.18, error_reporting=-1)",
+    "composerValidateStrict": "craft-lithocinch: valid (exit 0); craft-videocinch: exit 1 on the version-field warning (see FU2)",
+    "runtime": "testbed started and stopped; /admin/settings/plugins/litho 200 with toolPath/daemonUrl/apiUrl/apiKey fields; the Lithocinch row on /admin/settings/plugins carries src/icon.svg's path"
+  },
+  "findings": [],
+  "notBlocking": [
+    {
+      "id": "FU1",
+      "summary": "toolPath (both plugins) and nodePath (Videocinch) are autosuggest fields with suggestEnvVars: true, but CliDriver passes them raw to Symfony Process, so a $VAR or @alias entry runs as a literal command name. The cli driver is the default and Lite's only driver.",
+      "location": "craft-lithocinch src/drivers/CliDriver.php:24-27, src/templates/settings.twig:18-25; craft-videocinch src/drivers/CliDriver.php:24-27, src/templates/settings.twig:28-44",
+      "repro": "Static: CliDriver builds $cmd = [$this->settings->nodePath?, $this->settings->toolPath, 'transform'] with no App::parseEnv(); Process takes an array, so no shell expands $VAR. Failure shape (Optimizer.php): picture()/variant() throw into the template, LithoTransformer falls back to the untransformed URL, on-upload logs a warning and keeps the upload.",
+      "acceptance": "CliDriver (or driver()) resolves toolPath and nodePath through App::parseEnv() the same way as the HTTP settings; a probe with toolPath '$X' (X set to a path) and '@root/...' builds the resolved command; the literal 'lithocinch' still passes through unchanged.",
+      "blocking": false,
+      "severity": "low",
+      "likelihood": "possible",
+      "confidence": "high",
+      "cause": "Pre-existing, outside D690's diff; the brief already names it a follow-up.",
+      "needsDesign": false
+    },
+    {
+      "id": "FU2",
+      "summary": "D690's queue item 3 (review §3.3) is 'Videocinch: parseEnv on its driver settings, drop version (VC7, VC9)'; cc6bce4 lands VC7 only, so Videocinch's composer.json still has \"version\": \"0.1.0\" and composer validate --strict still exits 1.",
+      "location": "craft-videocinch composer.json (\"version\": \"0.1.0\", last key)",
+      "repro": "gate-kit sandbox --no-network -- zsh -c 'cd ~/sw/github-public/craft-videocinch && composer validate --strict' prints 'The version field is present, it is recommended to leave it out if the package is published on Packagist.' and exits 1 (Lithocinch at 4285566 prints './composer.json is valid', exit 0).",
+      "acceptance": "Either drop the field (composer validate --strict exits 0 in a throwaway HOME) or record that VC9 was deferred on purpose.",
+      "blocking": false,
+      "severity": "low",
+      "likelihood": "likely",
+      "confidence": "high",
+      "cause": "Scope gap against the review's list, not a regression; the brief describes cc6bce4 as parseEnv only.",
+      "needsDesign": false
+    },
+    {
+      "id": "FU3",
+      "summary": "Lithocinch's untagged 0.1.0 is now dated 2026-11-02, and its new '### Fixed' block lists repo-internal changes (the changelog's own heading, the composer version field, the icon move) and fixes to bugs no released version had. These become the first release's Store notes. The review's K1 says to keep '## Unreleased' until release day, then date it.",
+      "location": "craft-lithocinch CHANGELOG.md:3, 72-82",
+      "repro": "git tag in craft-lithocinch is empty; CHANGELOG.md:3 is '## 0.1.0 - 2026-11-02'; lines 80-82 describe the heading itself.",
+      "acceptance": "On release day the 0.1.0 date matches the tag date, and the 0.1.0 notes describe the shipped plugin, not the pre-release fixes (or Dan accepts them as written).",
+      "blocking": false,
+      "severity": "low",
+      "likelihood": "likely",
+      "confidence": "medium",
+      "cause": "A choice (follows Videocinch 9c9202c), not an error; the Store parses the heading correctly.",
+      "needsDesign": false
+    },
+    {
+      "id": "FU4",
+      "summary": "The fixer's check script covers $VAR, literal, empty and unset-key cases but not ${VAR}, @alias, $VAR-to-@alias or the unset-URL path. It also never loads the Craft class, so any @-value case would fatal ('Class \"Craft\" not found') rather than test anything.",
+      "location": "scratchpad/d690/parse-env-check.php:9-18, 36-45",
+      "repro": "Adding a case with daemonUrl '@x' to the script needs require of vendor/craftcms/cms/lib/yii2/Yii.php and src/Craft.php first; d690-gate/probe/edge-probe.php does this and covers 20 values per field.",
+      "acceptance": "If the script is kept as a harvested check: bootstrap Yii.php + Craft.php and add ${VAR}, @alias and unset-URL cases.",
+      "blocking": false,
+      "severity": "low",
+      "likelihood": "unlikely",
+      "confidence": "high",
+      "cause": "Test coverage, not product behaviour; the gate probe ran the missing cases and they match Craft.",
+      "needsDesign": false
+    }
+  ],
+  "knownLimits": [
+    "An env var holding true/false resolves to a bool, and the (string) cast gives '1' or '' (URL '1', token '1'; URL '', token null). Craft's own App::parseEnv() returns the bool, so this is the cast, not Craft.",
+    "A key or URL of '0', literal or from an env var, gives token null. The old '$s->apiKey ?: null' did the same, so nothing changed.",
+    "A literal API key shaped like '$word' (only \\w characters after the $) is now read as an env var name: unset gives no token. Same for a value starting with a defined @alias. This is Craft's convention.",
+    "An unset or empty env var for daemonUrl/apiUrl gives url '', and Guzzle throws 'URI must include a scheme and host' at request time. The old literal '$NAME' threw the same message, so nothing became less clear.",
+    "Craft 4.5 parseEnv was not read from source (only 5.11.3 is installed locally); composer.json allows ^4.5."
+  ]
+}
