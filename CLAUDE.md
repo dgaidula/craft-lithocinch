@@ -99,5 +99,5 @@ is centralized in `Optimizer` via `Plugin::$plugin->isPro()` (`is('pro','>=')`):
    polish (per-volume breakdown, history) — not launch-blocking.
 
 ## Test target sites
-DDEV Craft 5.10 + `craftcms/google-cloud`: `lunchbox-craft-cms-ddev`,
-`chefann-craft-cms-ddev` (under `~/Resilio Sync/active projects/FVD/FVD-20-1111 Chef Ann Updates`).
+Runtime checks run in Dan’s own testbed, `craft5-plugin-testbed` (DDEV, Craft 5),
+never in a client site.
