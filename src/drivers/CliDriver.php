@@ -2,6 +2,7 @@
 
 namespace iceboxind\lithocinch\drivers;
 
+use craft\helpers\App;
 use iceboxind\lithocinch\models\Settings;
 use RuntimeException;
 use Symfony\Component\Process\Process;
@@ -20,11 +21,15 @@ class CliDriver implements DriverInterface
     {
         $request['image'] = base64_encode($imageBytes);
 
+        // The CP's toolPath field offers `$ENV_VAR` values, which Craft does not
+        // resolve in plugin settings (nor in nodePath): parse them here, where they are read.
+        $nodePath = (string)App::parseEnv($this->settings->nodePath);
+
         $cmd = [];
-        if ($this->settings->nodePath !== '') {
-            $cmd[] = $this->settings->nodePath;
+        if ($nodePath !== '') {
+            $cmd[] = $nodePath;
         }
-        $cmd[] = $this->settings->toolPath;
+        $cmd[] = (string)App::parseEnv($this->settings->toolPath);
         $cmd[] = 'transform';
 
         $process = new Process($cmd);

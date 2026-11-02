@@ -74,6 +74,9 @@ Initial release. Two editions (Lite / Pro).
   now resolved (`App::parseEnv()`) when the driver is built. Before, the CP
   offered env vars for these fields but sent the literal `$NAME` as the URL and
   the Bearer token.
+- The `cli` driver now resolves `$ENV_VAR`, `${VAR}` and `@alias` values in the
+  tool path (and the node path) the same way. Before, a `$NAME` tool path ran
+  as a literal command name and the transform failed.
 - The plugin icon moved from the repo root to `src/icon.svg`, the plugin’s base
   path, where Craft and the Plugin Store read it; the CP showed the default icon.
 - This heading now uses the `## X.Y.Z - YYYY-MM-DD` form; the Plugin Store
