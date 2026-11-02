@@ -5,6 +5,7 @@ namespace iceboxind\lithocinch\services;
 use Craft;
 use craft\base\Component;
 use craft\elements\Asset;
+use craft\helpers\App;
 use craft\helpers\Assets as AssetsHelper;
 use craft\helpers\Db;
 use craft\helpers\FileHelper;
@@ -389,9 +390,13 @@ class Optimizer extends Component
             return new CliDriver($s);
         }
 
+        // The CP fields offer `$ENV_VAR` values, which Craft does not resolve
+        // in plugin settings: parse them here, where they are read.
+        $apiKey = (string)App::parseEnv($s->apiKey) ?: null;
+
         return match ($s->driver) {
-            'daemon' => new HttpDriver($s->daemonUrl, $s->apiKey ?: null, $s->timeout),
-            'remote' => new HttpDriver($s->apiUrl, $s->apiKey ?: null, $s->timeout),
+            'daemon' => new HttpDriver((string)App::parseEnv($s->daemonUrl), $apiKey, $s->timeout),
+            'remote' => new HttpDriver((string)App::parseEnv($s->apiUrl), $apiKey, $s->timeout),
             default => new CliDriver($s),
         };
     }

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.1.0 - 2026-11-02
 
 Initial release. Two editions (Lite / Pro).
 
@@ -68,6 +68,18 @@ Initial release. Two editions (Lite / Pro).
   skipped silently; per-asset failures never kill the rest of the selection.
   Hidden entirely on Lite.
 - Settings model + CP settings + `config/litho.php` overrides.
+
+### Fixed
+- `$ENV_VAR` values in the API key, daemon URL and remote API URL settings are
+  now resolved (`App::parseEnv()`) when the driver is built. Before, the CP
+  offered env vars for these fields but sent the literal `$NAME` as the URL and
+  the Bearer token.
+- The plugin icon moved from the repo root to `src/icon.svg`, the plugin’s base
+  path, where Craft and the Plugin Store read it; the CP showed the default icon.
+- This heading now uses the `## X.Y.Z - YYYY-MM-DD` form; the Plugin Store
+  ignores any other version heading (it read `## 0.1.0 — unreleased`).
+- `composer.json` no longer carries a `version` field: Packagist takes versions
+  from git tags, and `composer validate` warned about it.
 
 ### Next
 - Savings dashboard polish (per-volume breakdown, history) — fast-follow, not
