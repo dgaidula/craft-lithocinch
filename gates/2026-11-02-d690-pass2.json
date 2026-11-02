@@ -1,0 +1,107 @@
+{
+  "tool": "d690-pass2 (craft-lithocinch, craft-videocinch, craft-blockonomicon, craft-reliquary, craft-advanced-url-field, craft-section-field, craft-element-map)",
+  "run": "d690b-gate-2026-11-02",
+  "mode": "working",
+  "suite": {
+    "note": "No harness in any of the seven repos; the fixer’s scratch scripts are the suite.",
+    "parse-env-check lithocinch": {
+      "pass": 30,
+      "fail": 0
+    },
+    "parse-env-check videocinch": {
+      "pass": 35,
+      "fail": 0
+    },
+    "blockonomicon-export-check": {
+      "pass": 4,
+      "fail": 0
+    },
+    "reliquary-wrapper-check": {
+      "pass": 5,
+      "fail": 0
+    },
+    "mutants": "M1-M11: lithocinch M1 killed, M2/M3 survived (no nodePath case), M4 survived (equivalent); videocinch M1-M3 killed, M4 survived (equivalent); blockonomicon M5 killed, M6 survived (BL3 has no observable behaviour); reliquary M7-M11 killed. Every real-tree item: unchanged.",
+    "firstRunGreen": true
+  },
+  "findings": [],
+  "notBlocking": [
+    {
+      "blocking": false,
+      "needsDesign": false,
+      "id": "FU1",
+      "summary": "Lithocinch’s nodePath parse is untested: the check script has nodePath cases only for Videocinch, so reverting the nodePath parseEnv (M2) or the empty check (M3) in craft-lithocinch stays green. The behaviour itself is right (gate probe: $VAR resolves, unset var gives no prefix).",
+      "location": "scratchpad/d690b/parse-env-check.php (the str_contains($ns, 'videocinch') guard); craft-lithocinch/src/drivers/CliDriver.php:26-30",
+      "repro": "cd ~/sw/github-public/craft-lithocinch && gate-kit mutants d690b-gate/mut-litho.yaml --brief -- (spec command) -> \"warn survived ... M2\", \"warn survived ... M3\"",
+      "acceptance": "If the script is harvested as a check, add the nodePath cases for Lithocinch too (nodePath is config-file-only there); M2 and M3 then go red.",
+      "severity": "low",
+      "confidence": "high",
+      "likelihood": "unlikely",
+      "cause": "test coverage"
+    },
+    {
+      "blocking": false,
+      "needsDesign": false,
+      "id": "FU2",
+      "summary": "On Craft 4 the new parseEnv calls behave differently from the Craft 5.11.3 the script ran against, and the changelog lines over-claim for the declared floor (craftcms/cms ^4.5.0): Craft 4.5.0–4.16 resolve only a whole $VAR and @alias (not ${VAR} or $VAR/…, added in 4.17.0), and every Craft 4 leaves an unset $VAR literal, so Videocinch’s “an unset node-path variable means no node prefix” holds on Craft 5 only (on Craft 4 it fails loudly with “$NAME: not found”).",
+      "location": "craft-lithocinch/CHANGELOG.md:77-79; craft-videocinch/CHANGELOG.md:50-52; commit b684548 message",
+      "repro": "php d690b-gate/craft45-parseenv-only.php dl/App-4.5.0.php -> \"${G_TOOL} -> '${G_TOOL}'\", \"$G_BIN/fake-tool -> '$G_BIN/fake-tool'\", \"$G_UNSET -> '$G_UNSET'\"; php d690b-gate/craft4-parseenv-probe.php dl/App-4x.php (videocinch) -> nodePath $G_UNSET: \"exec: $G_UNSET: not found\"",
+      "acceptance": "Either scope the changelog wording (“${VAR} on Craft 5 and 4.17+”) or accept as written; no code change needed.",
+      "severity": "low",
+      "confidence": "high",
+      "likelihood": "unlikely",
+      "cause": "Craft 4/5 parseEnv divergence (helpers/App.php 4.5.0:186, 4.x:212, 5.11.3:231; craftcms/cms 4.x CHANGELOG 4.17.0)"
+    },
+    {
+      "blocking": false,
+      "needsDesign": false,
+      "id": "FU3",
+      "summary": "On Craft 5 a toolPath whose env var is unset now resolves to ’’ and Symfony Process throws ValueError “First element must contain a non-empty program name”, which names neither the plugin nor the setting; before, the message was “Lithocinch cli transform failed: … $NAME: not found”. Every caller catches Throwable, so the failure stays contained and logged.",
+      "location": "craft-lithocinch/src/drivers/CliDriver.php:32; craft-videocinch/src/drivers/CliDriver.php:32",
+      "repro": "env PATH=/usr/bin:/bin php d690b-gate/edge-probe.php <plugin>/src <ns> d690b/bin -> {\"toolPath\":\"$G_UNSET\"} -> ValueError: First element must contain a non-empty program name",
+      "acceptance": "When the resolved toolPath is ’’, throw a RuntimeException naming the plugin and the raw setting (e.g. “Lithocinch cli: toolPath ‘$X’ resolved to an empty value”); or accept.",
+      "severity": "low",
+      "confidence": "high",
+      "likelihood": "unlikely",
+      "cause": "App::parseEnv returns null for an unset $VAR on Craft 5"
+    },
+    {
+      "blocking": false,
+      "needsDesign": false,
+      "id": "FU4",
+      "summary": "Pre-existing since cfd268f, outside this diff: a Matrix block type with no fields has no key in getFieldIdsByLayoutIds()’s result, so $fieldIds[$layoutId] is undefined and foreach gets null (two PHP warnings, which Craft’s error handler can turn into an exception). Same pattern in SettingsController.php:185 and Blocks.php:190, 290. BL4’s reset leaves the output right.",
+      "location": "craft-blockonomicon/src/adapters/MatrixField.php:60",
+      "repro": "php d690b-gate/blk-empty-block-probe.php craft-blockonomicon/src -> \"Warning: Undefined array key 40 ... MatrixField.php on line 60\", \"Warning: foreach() argument must be of type array|object, null given\"",
+      "acceptance": "foreach ($fieldIds[$layoutId] ?? [] as …) at the four sites; the probe prints no warnings.",
+      "severity": "low",
+      "confidence": "medium",
+      "likelihood": "possible",
+      "cause": "Craft 4 Fields::getFieldIdsByLayoutIds() only returns layouts that have fields (services/Fields.php 4.x:1224-1238)"
+    },
+    {
+      "blocking": false,
+      "needsDesign": false,
+      "id": "FU5",
+      "summary": "indexElementFields() can still fail: getElementById() returns null for a trashed or missing element or an uninstalled type, and Search::indexElementAttributes(ElementInterface $element) then throws a TypeError; it also passes $fields (values keyed by field ID) as $fieldHandles (pre-existing from dd4aa48). Nothing calls the method: Craft 4 and 5.11.3 core have no indexElementFields caller and the plugin has none.",
+      "location": "craft-reliquary/src/services/CraftSearchWrapper.php:76-93",
+      "repro": "static: Elements.php 4.x:858-880 (_elementById returns null), Search.php 4.x:143; grep -rn indexElementFields vendor/craftcms/cms/src -> no hits",
+      "acceptance": "Return false when the element is null (and decide what $fields should map to), or accept as dead code.",
+      "severity": "low",
+      "confidence": "high",
+      "likelihood": "unlikely",
+      "cause": "no null guard; Craft 4 removed the method the wrapper once forwarded to"
+    },
+    {
+      "blocking": false,
+      "needsDesign": false,
+      "id": "FU6",
+      "summary": "The BL3 changelog line describes an internal no-op (“Nothing reads that list yet, so the editor’s output doesn’t change”). It is accurate, but it becomes Store release notes for a change with no user effect.",
+      "location": "craft-blockonomicon/CHANGELOG.md:7",
+      "repro": "static; the gate confirmed the claim: the keyed $blockfields is built and never read, in 815e338 and in upstream 0ed979e; renderTemplate() is not passed it; mutant M6 (typo restored) survives because nothing can observe it",
+      "acceptance": "Drop the line or keep it, at Dan’s choice.",
+      "severity": "info",
+      "confidence": "high",
+      "likelihood": "unlikely",
+      "cause": "changelog wording"
+    }
+  ]
+}
